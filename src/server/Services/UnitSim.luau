@@ -320,6 +320,17 @@ local function findTarget(match: Match.Match, rec: Match.UnitRecord): Target
 	return best :: Target
 end
 
+local function isTargetValid(match: Match.Match, target: Target): boolean
+	if target.kind == "unit" then
+		return target.unitRec ~= nil and not target.unitRec.dead
+	elseif target.kind == "hero" then
+		return target.humanoid ~= nil and target.humanoid.Health > 0
+	elseif target.kind == "base" then
+		return match.status == "Active"
+	end
+	return false
+end
+
 -- Apply age-based status effect on attack
 local function applyStatusEffect(match: Match.Match, rec: Match.UnitRecord, target: Target)
 	local effectDef = StatusEffects.byAge[rec.def.age]
@@ -416,7 +427,7 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 			-- Verify the target is still within melee range (+ small tolerance for dodging)
 			local toTarget = currentPos - rec.body.Position
 			local flatDist = Vector3.new(toTarget.X, 0, toTarget.Z).Magnitude - target.radius
-			if flatDist > rec.def.range + 3 then
+			if flatDist > rec.def.range + 1.2 then
 				return -- The player/unit dodged out of range!
 			end
 
@@ -539,7 +550,15 @@ function UnitSim.tick(match: Match.Match, dt: number)
 				continue
 			end
 
-			local target = findTarget(match, rec)
+			local target = (rec :: any).currentTarget
+			if target and not isTargetValid(match, target) then
+				target = nil
+			end
+			if not target then
+				target = findTarget(match, rec)
+				(rec :: any).currentTarget = target
+			end
+			
 			local myPos = rec.body.Position
 
 			-- attack animation: lunge for melee, recoil for ranged/heavy
@@ -569,7 +588,27 @@ function UnitSim.tick(match: Match.Match, dt: number)
 			local toTarget = target.pos - myPos
 			local flatDist = Vector3.new(toTarget.X, 0, toTarget.Z).Magnitude - target.radius
 
-			if flatDist <= rec.def.range then
+			local hasLOS = true
+			if rec.def.role == "ranged" then
+				local params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Include
+				local mapFolder = workspace:FindFirstChild("Map")
+				if mapFolder then
+					params.FilterDescendantsInstances = {mapFolder}
+					local fromPos = myPos + Vector3.new(0, 1.5, 0)
+					local targetPos = target.pos
+					if target.kind == "hero" and target.humanoid then
+						local hrp = target.humanoid.Parent and target.humanoid.Parent:FindFirstChild("HumanoidRootPart")
+						if hrp then targetPos = hrp.Position end
+					end
+					local res = workspace:Raycast(fromPos, targetPos - fromPos, params)
+					if res and res.Instance.Name == "Rock" then
+						hasLOS = false
+					end
+				end
+			end
+
+			if flatDist <= rec.def.range and hasLOS then
 				setAnimState(rec, "combat")
 				attack(match, rec, target, now)
 				-- face target
