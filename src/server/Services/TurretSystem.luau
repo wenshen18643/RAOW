@@ -47,7 +47,7 @@ function TurretSystem.tryBuild(match: Match.Match, side: string, slot: number, b
 		return false
 	end
 	local s = match.sides[side]
-	if slot < 1 or slot > GameConfig.TURRET_SLOTS or s.turrets[slot] ~= nil then
+	if slot < 1 or slot > GameConfig.TURRET_SLOTS then
 		return false
 	end
 	local def = Turrets[s.age]
@@ -57,6 +57,13 @@ function TurretSystem.tryBuild(match: Match.Match, side: string, slot: number, b
 		end
 		s.gold -= def.cost
 	end
+	
+	-- If a turret already exists in this slot, destroy its model to replace it
+	local oldRec = s.turrets[slot]
+	if oldRec and oldRec.model then
+		oldRec.model:Destroy()
+	end
+	
 	local mount = match.map.bases[side].turretMounts[slot]
 	local model, muzzle = buildTurretModel(def, mount)
 	s.turrets[slot] = { def = def, model = model, muzzle = muzzle, nextFireAt = 0 }

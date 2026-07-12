@@ -296,39 +296,33 @@ local function findTarget(match: Match.Match, rec: Match.UnitRecord): Target
 
 	for _, enemy in match.sides[enemySide].units do
 		if not enemy.dead then
-			local d = (enemy.body.Position - myPos).Magnitude
+			local radius = enemy.body.Size.Z / 2
+			local d = (enemy.body.Position - myPos).Magnitude - radius
 			if d < bestDist and hasLOS(enemy.body.Position) then
 				bestDist = d
-				best = { kind = "unit", pos = enemy.body.Position, unitRec = enemy, humanoid = nil, radius = enemy.body.Size.Z / 2 }
+				best = { kind = "unit", pos = enemy.body.Position, unitRec = enemy, humanoid = nil, radius = radius }
 			end
 		end
 	end
 
 	local hero = heroTargetFor(match, enemySide)
 	if hero then
-		local d = (hero.pos - myPos).Magnitude
+		local d = (hero.pos - myPos).Magnitude - hero.radius
 		if d < bestDist and hasLOS(hero.pos) then
 			bestDist = d
 			best = hero
 		end
 	end
 
-	if not best then
-		local core = match.map.bases[enemySide].core
-		best = { kind = "base", pos = core.Position, unitRec = nil, humanoid = nil, radius = core.Size.X / 2 }
+	local core = match.map.bases[enemySide].core
+	local baseRadius = core.Size.X / 2
+	local dBase = (core.Position - myPos).Magnitude - baseRadius
+	if dBase < bestDist then
+		bestDist = dBase
+		best = { kind = "base", pos = core.Position, unitRec = nil, humanoid = nil, radius = baseRadius }
 	end
-	return best :: Target
-end
 
-local function isTargetValid(match: Match.Match, target: Target): boolean
-	if target.kind == "unit" then
-		return target.unitRec ~= nil and not target.unitRec.dead
-	elseif target.kind == "hero" then
-		return target.humanoid ~= nil and target.humanoid.Health > 0
-	elseif target.kind == "base" then
-		return match.status == "Active"
-	end
-	return false
+	return best :: Target
 end
 
 -- Apply age-based status effect on attack
@@ -398,7 +392,7 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 			id = projId,
 			pos = fromPos,
 			dir = dir,
-			speed = 40,
+			speed = 25,
 			damage = damage,
 			side = rec.side,
 			age = rec.def.age,
@@ -424,10 +418,10 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 			
 			if not currentPos then return end
 			
-			-- Verify the target is still within melee range (+ small tolerance for dodging)
+			-- Verify the target is still within melee range (0 tolerance for easiest dodging)
 			local toTarget = currentPos - rec.body.Position
 			local flatDist = Vector3.new(toTarget.X, 0, toTarget.Z).Magnitude - target.radius
-			if flatDist > rec.def.range + 1.2 then
+			if flatDist > rec.def.range then
 				return -- The player/unit dodged out of range!
 			end
 
@@ -483,7 +477,7 @@ local function processProjectiles(match: Match.Match, dt: number)
 				local char = p.target.humanoid.Parent
 				if char then
 					local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
-					if root and (root.Position - nextPos).Magnitude < 4.0 then
+					if root and (root.Position - nextPos).Magnitude < 2.5 then
 						local s = match.sides[match.playerSide]
 						local defLevel = (s.heroUpgrades and s.heroUpgrades.def) or 0
 						local defMult = 1 - math.min(0.50, 0.10 * defLevel)
@@ -550,15 +544,7 @@ function UnitSim.tick(match: Match.Match, dt: number)
 				continue
 			end
 
-			local target = (rec :: any).currentTarget
-			if target and not isTargetValid(match, target) then
-				target = nil
-			end
-			if not target then
-				target = findTarget(match, rec)
-				;(rec :: any).currentTarget = target
-			end
-			
+			local target = findTarget(match, rec)
 			local myPos = rec.body.Position
 
 			-- attack animation: lunge for melee, recoil for ranged/heavy
