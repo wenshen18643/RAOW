@@ -8,20 +8,14 @@ local Debris = game:GetService("Debris")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Units = require(ReplicatedStorage.Shared.Config.Units)
-local Ages = require(ReplicatedStorage.Shared.Config.Ages)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Match = require(script.Parent.Match)
+local UnitFactory = require(script.Parent.UnitFactory)
 
 local UnitSim = {}
 
 local unitsFolder: Folder? = nil
-
-local ROLE_SIZE = {
-	melee = Vector3.new(2.4, 5, 1.6),
-	ranged = Vector3.new(2, 4.6, 1.4),
-	heavy = Vector3.new(4.5, 6.5, 3.5),
-}
 
 local function getUnitsFolder(): Folder
 	if not unitsFolder or not unitsFolder.Parent then
@@ -56,78 +50,15 @@ local function makeHpBar(body: BasePart): Frame
 end
 
 local function buildUnitModel(def: any, side: string, spawnCf: CFrame): (Model, BasePart)
-	local model = Instance.new("Model")
-	model.Name = def.id
-
-	local size = ROLE_SIZE[def.role]
-	local ageColor = Ages[def.age].color
-	local color = ageColor
-	if def.role == "ranged" then
-		color = ageColor:Lerp(Color3.new(1, 1, 1), 0.3)
-	elseif def.role == "heavy" then
-		color = ageColor:Lerp(Color3.new(0, 0, 0), 0.3)
-	end
-
-	local body = Instance.new("Part")
-	body.Name = "Body"
-	body.Size = size
-	body.Color = color
-	body.Material = Enum.Material.SmoothPlastic
-	body.Anchored = true
-	body.CanCollide = false
-	body.Parent = model
-
-	local head = Instance.new("Part")
-	head.Name = "Head"
-	head.Shape = Enum.PartType.Ball
-	head.Size = Vector3.one * math.min(size.X, 2.2)
-	head.Color = color:Lerp(Color3.new(1, 1, 1), 0.15)
-	head.Material = Enum.Material.SmoothPlastic
-	head.Anchored = true
-	head.CanCollide = false
-	head.Parent = model
-
-	-- Team stripe so sides read instantly
-	local stripe = Instance.new("Part")
-	stripe.Name = "Stripe"
-	stripe.Size = Vector3.new(size.X + 0.2, 0.8, size.Z + 0.2)
-	stripe.Color = side == "A" and Color3.fromRGB(52, 120, 200) or Color3.fromRGB(200, 70, 60)
-	stripe.Material = Enum.Material.Neon
-	stripe.Anchored = true
-	stripe.CanCollide = false
-	stripe.Parent = model
-
-	model.PrimaryPart = body
-	body:SetAttribute("EntityType", "Unit")
-	body:SetAttribute("Side", side)
-
-	-- position pieces relative to body
-	local function place(cf: CFrame)
-		body.CFrame = cf
-		head.CFrame = cf * CFrame.new(0, size.Y / 2 + head.Size.Y / 2 - 0.3, 0)
-		stripe.CFrame = cf * CFrame.new(0, -size.Y / 2 + 0.6, 0)
-	end
-	place(spawnCf * CFrame.new(0, size.Y / 2, 0))
-
+	local model, body = UnitFactory.build(def, side, spawnCf)
 	makeHpBar(body)
 	model.Parent = getUnitsFolder()
 	return model, body
 end
 
--- Move whole model, keeping pieces attached (all anchored).
+-- Decorative parts are welded to the anchored body: one CFrame write moves everything.
 local function moveModel(rec: Match.UnitRecord, cf: CFrame)
-	local body = rec.body
-	local model = rec.model
-	local head = model:FindFirstChild("Head") :: BasePart?
-	local stripe = model:FindFirstChild("Stripe") :: BasePart?
-	body.CFrame = cf
-	local size = body.Size
-	if head then
-		head.CFrame = cf * CFrame.new(0, size.Y / 2 + head.Size.Y / 2 - 0.3, 0)
-	end
-	if stripe then
-		stripe.CFrame = cf * CFrame.new(0, -size.Y / 2 + 0.6, 0)
-	end
+	rec.body.CFrame = cf
 end
 
 local function updateHpBar(rec: Match.UnitRecord)
@@ -152,9 +83,11 @@ function UnitSim.killUnit(match: Match.Match, rec: Match.UnitRecord, killerSide:
 	end
 	-- brief death fade
 	for _, p in rec.model:GetDescendants() do
-		if p:IsA("BasePart") then
+		-- skip the invisible hitbox so it doesn't flash on death
+		if p:IsA("BasePart") and p.Transparency < 0.9 then
 			p.Transparency = 0.5
 			p.Color = Color3.fromRGB(40, 40, 40)
+			p.Material = Enum.Material.SmoothPlastic
 		end
 	end
 	Debris:AddItem(rec.model, 0.6)
