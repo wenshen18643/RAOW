@@ -188,10 +188,6 @@ local function damageNumber(data: { [string]: any })
 		3,
 		0.65
 	)
-	if isHero then
-		GameUI.showHitmarker()
-		Viewmodel.hitstop()
-	end
 end
 
 local function rewardPopup(data: { [string]: any })
@@ -388,6 +384,10 @@ function FX.start()
 		elseif kind == "Reward" then
 			rewardPopup(data)
 		end
+	end)
+	RemotesModule.HitConfirm.OnClientEvent:Connect(function()
+		GameUI.showHitmarker()
+		Viewmodel.hitstop()
 	end)
 
 	RemotesModule.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)

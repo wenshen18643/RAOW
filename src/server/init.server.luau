@@ -167,6 +167,7 @@ end)
 task.spawn(function()
 	while true do
 		task.wait(0.25)
+		Match.tickEconomy(currentMatch, os.clock())
 		TurretSystem.tick(currentMatch)
 	end
 end)

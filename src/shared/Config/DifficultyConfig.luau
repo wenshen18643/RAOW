@@ -18,8 +18,8 @@ export type DifficultyDef = {
 -- All available difficulty levels keyed by display name
 local LEVELS: { [string]: DifficultyDef } = {
 	Normal = {
-		hpMult = 1.2,
-		damageMult = 1.2,
+		hpMult = 1.0,
+		damageMult = 1.0,
 		aiTickRate = 1.0,
 		aiSpecialThreshold = 6,
 		aiSpawnInterval = 4.5,
@@ -28,8 +28,8 @@ local LEVELS: { [string]: DifficultyDef } = {
 		aiCounterSpawn = false,
 	},
 	Harder = {
-		hpMult = 1.5,
-		damageMult = 1.5,
+		hpMult = 1.3,
+		damageMult = 1.3,
 		aiTickRate = 0.8,
 		aiSpecialThreshold = 4,
 		aiSpawnInterval = 3.0,
@@ -38,8 +38,8 @@ local LEVELS: { [string]: DifficultyDef } = {
 		aiCounterSpawn = true,
 	},
 	Impossible = {
-		hpMult = 2.2,
-		damageMult = 2.2,
+		hpMult = 2.0,
+		damageMult = 2.0,
 		aiTickRate = 0.5,
 		aiSpecialThreshold = 2,
 		aiSpawnInterval = 2.0,

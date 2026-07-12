@@ -20,6 +20,7 @@ local NAMES = {
 	"MatchEvent", -- (event: string, data: table?) "MatchStart"|"Victory"|"Defeat"|"AgeUp"|"SpecialFired"|"HeroRespawn"
 	"FX", -- (kind: string, data: table) visual effects broadcast
 	"DifficultySelected", -- (difficultyName: string) broadcasts chosen difficulty
+	"HitConfirm", -- () server-confirmed hit for the attacking player only
 }
 
 local Remotes: { [string]: RemoteEvent } = {}

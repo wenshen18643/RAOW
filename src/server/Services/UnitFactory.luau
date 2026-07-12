@@ -416,6 +416,18 @@ function UnitFactory.build(def: any, side: string, spawnCf: CFrame): (Model, Bas
 	body:SetAttribute("AnimState", "walk")
 	body:SetAttribute("AttackCount", 0)
 
+	-- Strong team silhouette: colored outline remains readable during crowded fights.
+	local teamColor = side == "A" and Color3.fromRGB(65, 155, 255) or Color3.fromRGB(255, 75, 65)
+	local outline = Instance.new("Highlight")
+	outline.Name = "TeamOutline"
+	outline.Adornee = model
+	outline.FillTransparency = 0.88
+	outline.FillColor = teamColor
+	outline.OutlineTransparency = 0.08
+	outline.OutlineColor = teamColor
+	outline.DepthMode = Enum.HighlightDepthMode.Occluded
+	outline.Parent = model
+
 	local ctx: Ctx = { model = model, body = body }
 
 	local rigKind: string
@@ -438,7 +450,7 @@ function UnitFactory.build(def: any, side: string, spawnCf: CFrame): (Model, Bas
 	body:SetAttribute("Rig", rigKind)
 
 	-- team stripe under the feet
-	local stripeSize = def.role == "heavy" and Vector3.new(size.X + 0.4, 0.35, size.Z + 0.4) or Vector3.new(2.6, 0.35, 2)
+	local stripeSize = (def.role == "heavy" or def.role == "super_heavy") and Vector3.new(size.X + 0.8, 0.45, size.Z + 0.8) or Vector3.new(3.2, 0.45, 2.5)
 	weldTo(ctx, body, "Stripe", stripeSize, side == "A" and Color3.fromRGB(52, 120, 200) or Color3.fromRGB(200, 70, 60),
 		CFrame.new(0, -size.Y / 2 + 0.2, 0), { material = Enum.Material.Neon, transparency = 0.2 })
 
