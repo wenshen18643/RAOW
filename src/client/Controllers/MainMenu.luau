@@ -335,7 +335,7 @@ function MainMenu.start()
 	end
 
 	local diffs: { { string | Color3 } } = {
-		{ "NORMAL", "Standard enemies. Learn the ropes.", Color3.fromRGB(60, 140, 70), "Normal" },
+		{ "NORMAL", "Fair economy and standard enemy strength.", Color3.fromRGB(60, 140, 70), "Normal" },
 		{ "HARDER", "1.3x enemy strength, reactive AI.", Color3.fromRGB(180, 120, 40), "Harder" },
 		{ "IMPOSSIBLE", "2x enemy strength. Frame-perfect AI.", Color3.fromRGB(180, 50, 50), "Impossible" },
 	}
@@ -401,8 +401,10 @@ function MainMenu.start()
 		"1 / 2 / 3 — spawn Melee / Ranged / Heavy unit",
 		"4 — build turret    ·    5 — special ability    ·    Q — evolve age",
 		"",
-		"Kills earn GOLD (spend on units) and XP (evolve through 5 ages).",
-		"Destroy the enemy base to win. Protect your own!",
+		"There are 5 stages: Stone, Medieval, Renaissance, Modern, and Future.",
+		"Kills earn GOLD for troops and XP for evolution.",
+		"Evolving unlocks units, hero weapons, turrets, specials, and a tougher base.",
+		"YOUR GOAL: destroy the RED enemy base while protecting your BLUE base.",
 	}
 	label(helpPanel, {
 		AnchorPoint = Vector2.new(0.5, 0),

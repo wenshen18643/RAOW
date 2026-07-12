@@ -15,6 +15,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Match = require(script.Parent.Match)
 local UnitFactory = require(script.Parent.UnitFactory)
+local Synergies = require(ReplicatedStorage.Shared.Config.Synergies)
 local AnimController = require(script.Parent.AnimController)
 local ObjectPool = require(script.Parent.ObjectPool)
 
@@ -49,22 +50,33 @@ local function getUnitsFolder(): Folder
 	return unitsFolder :: Folder
 end
 
-local function makeHpBar(body: BasePart): Frame
+local function makeHpBar(body: BasePart, side: string, role: string): Frame
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "HpBar"
-	gui.Size = UDim2.fromOffset(50, 6)
+	gui.Size = UDim2.fromOffset(72, 24)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, body.Size.Y / 2 + 1.5, 0)
 	gui.AlwaysOnTop = false
-	gui.MaxDistance = 250
+	gui.MaxDistance = 160
+	local team = Instance.new("TextLabel")
+	team.Name = "TeamLabel"
+	team.Size = UDim2.new(1, 0, 0, 15)
+	team.BackgroundTransparency = 1
+	team.Font = Enum.Font.GothamBold
+	team.TextSize = 11
+	team.TextStrokeTransparency = 0.45
+	team.TextColor3 = side == "A" and Color3.fromRGB(100, 190, 255) or Color3.fromRGB(255, 105, 95)
+	team.Text = side == "A" and `ALLY  {string.upper(role)}` or `ENEMY  {string.upper(role)}`
+	team.Parent = gui
 	local bg = Instance.new("Frame")
-	bg.Size = UDim2.fromScale(1, 1)
+	bg.Position = UDim2.fromOffset(0, 17)
+	bg.Size = UDim2.new(1, 0, 0, 7)
 	bg.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	bg.BorderSizePixel = 0
 	bg.Parent = gui
 	local fill = Instance.new("Frame")
 	fill.Name = "Fill"
 	fill.Size = UDim2.fromScale(1, 1)
-	fill.BackgroundColor3 = Color3.fromRGB(80, 220, 80)
+	fill.BackgroundColor3 = side == "A" and Color3.fromRGB(70, 190, 255) or Color3.fromRGB(235, 75, 65)
 	fill.BorderSizePixel = 0
 	fill.Parent = bg
 	gui.Parent = body
@@ -83,7 +95,7 @@ local function buildUnitModel(def: any, side: string, spawnCf: CFrame): (Model, 
 		local fill = bar and bar:FindFirstChild("Fill", true) :: Frame?
 		if fill then
 			fill.Size = UDim2.fromScale(1, 1)
-			fill.BackgroundColor3 = Color3.fromRGB(80, 220, 80)
+			fill.BackgroundColor3 = side == "A" and Color3.fromRGB(70, 190, 255) or Color3.fromRGB(235, 75, 65)
 		end
 		-- Reset animation state for the new life (pool acquire restores transparency)
 		body:SetAttribute("AnimState", "walk")
@@ -93,7 +105,7 @@ local function buildUnitModel(def: any, side: string, spawnCf: CFrame): (Model, 
 
 	-- No recycled model available — build a fresh one
 	local model, body = UnitFactory.build(def, side, spawnCf)
-	makeHpBar(body)
+	makeHpBar(body, side, def.role)
 	model.Parent = getUnitsFolder()
 	return model, body
 end
@@ -185,6 +197,43 @@ local function getDifficulty(match: Match.Match): DifficultyConfig.DifficultyDef
 	return DifficultyConfig.LEVELS[match.difficulty] or DifficultyConfig.LEVELS[DifficultyConfig.DEFAULT]
 end
 
+local function applyDoctrineBuff(rec: Match.UnitRecord, doctrineId: string)
+	if rec.synergyApplied then return end
+	local doctrine = Synergies.byId[doctrineId]
+	local buff = doctrine and doctrine.roleBuffs[rec.def.role]
+	if not buff then return end
+	local oldMax = rec.maxHp
+	rec.maxHp = math.floor(rec.maxHp * (1 + (buff.health or 0)))
+	rec.hp += rec.maxHp - oldMax
+	rec.scaledDamage = math.floor(rec.scaledDamage * (1 + (buff.damage or 0)))
+	rec.moveSpeedMult = 1 + (buff.speed or 0)
+	rec.synergyApplied = true
+	rec.body:SetAttribute("Doctrine", doctrineId)
+end
+
+local function checkDoctrine(match: Match.Match, s: Match.SideState)
+	if s.doctrine then
+		for _, rec in s.units do applyDoctrineBuff(rec, s.doctrine) end
+		return
+	end
+	local counts: { [string]: number } = {}
+	for _, rec in s.units do
+		if not rec.dead then counts[rec.def.role] = (counts[rec.def.role] or 0) + 1 end
+	end
+	for _, doctrine in Synergies.list do
+		local complete = true
+		for role, required in doctrine.requirements do
+			if (counts[role] or 0) < required then complete = false break end
+		end
+		if complete then
+			s.doctrine = doctrine.id
+			for _, rec in s.units do applyDoctrineBuff(rec, doctrine.id) end
+			Remotes.MatchEvent:FireAllClients("SynergyUnlocked", { side = s.side, doctrine = doctrine.id, name = doctrine.name })
+			return
+		end
+	end
+end
+
 -- Request a unit spawn: validates cost/age, pays, queues.
 function UnitSim.requestSpawn(match: Match.Match, side: string, unitId: string, bypassCost: boolean?): boolean
 	if match.status ~= "Active" then
@@ -219,8 +268,10 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	local unitId = table.remove(s.queue, 1) :: string
 	local def = Units.byId[unitId]
 	local spawnCf = match.map.bases[s.side].unitSpawn
-	-- random lane offset so units don't stack in one line
-	local zOff = Random.new():NextNumber(-12, 12)
+	-- Stable formation lanes prevent units from spawning into a noisy clump.
+	local formationSlots = { 0, -7, 7, -14, 14, -21, 21 }
+	local formationIndex = (#s.units % #formationSlots) + 1
+	local zOff = formationSlots[formationIndex]
 	spawnCf = spawnCf * CFrame.new(zOff, 0, 0) -- spawn cf faces lane; x is sideways after rotation
 	local model, body = buildUnitModel(def, s.side, spawnCf)
 
@@ -244,9 +295,14 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 		nextAttackAt = 0,
 		dead = false,
 		damageAmp = 0,
+		moveSpeedMult = 1,
+		synergyApplied = false,
+		laneOffset = body.Position.Z,
+		moveHeading = s.side == "A" and Vector3.new(1, 0, 0) or Vector3.new(-1, 0, 0),
 		walkStart = now,
 	}
 	table.insert(s.units, rec)
+	checkDoctrine(match, s)
 end
 
 export type Target = {
@@ -604,15 +660,17 @@ function UnitSim.tick(match: Match.Match, dt: number)
 				end
 			else
 				-- advance toward target with separation steering
-				local dir = Vector3.new(toTarget.X, 0, toTarget.Z).Unit
+				local flatTarget = Vector3.new(toTarget.X, 0, toTarget.Z)
+				local dir = flatTarget.Magnitude > 0.01 and flatTarget.Unit or rec.moveHeading
 				local separation = Vector3.zero
 				for _, friend in s.units do
 					if friend ~= rec and not friend.dead then
 						local off = myPos - friend.body.Position
 						local flatOff = Vector3.new(off.X, 0, off.Z)
 						local d = flatOff.Magnitude
-						if d < 4 and d > 0.01 then
-							separation += flatOff.Unit * ((4 - d) / 4)
+						local personalSpace = (rec.def.role == "heavy" or rec.def.role == "super_heavy") and 6.5 or 4
+						if d < personalSpace and d > 0.01 then
+							separation += flatOff.Unit * ((personalSpace - d) / personalSpace)
 						end
 					end
 				end
@@ -637,12 +695,19 @@ function UnitSim.tick(match: Match.Match, dt: number)
 					end
 				end
 
-				local moveDir = dir + separation * 1.2 + obstacleAvoid
+				local laneCorrection = Vector3.zero
+				if flatDist > rec.def.range * 1.8 then
+					laneCorrection = Vector3.new(0, 0, math.clamp((rec.laneOffset - myPos.Z) / 10, -0.75, 0.75))
+				end
+				local moveDir = dir + separation * 1.35 + obstacleAvoid + laneCorrection
 				if moveDir.Magnitude > 0.01 then
 					setAnimState(rec, "walk")
 					moveDir = moveDir.Unit
-					local newPos = myPos + moveDir * rec.def.moveSpeed * dt
-					moveModel(rec, CFrame.lookAt(newPos, newPos + dir))
+					local steerAlpha = 1 - math.exp(-dt * 7)
+					rec.moveHeading = rec.moveHeading:Lerp(moveDir, steerAlpha)
+					if rec.moveHeading.Magnitude > 0.01 then rec.moveHeading = rec.moveHeading.Unit end
+					local newPos = myPos + rec.moveHeading * rec.def.moveSpeed * rec.moveSpeedMult * dt
+					moveModel(rec, CFrame.lookAt(newPos, newPos + rec.moveHeading))
 				end
 			end
 		end

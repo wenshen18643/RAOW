@@ -1,5 +1,5 @@
 --!strict
--- Side B AI opponent: timer-driven, completely bypasses gold constraints (infinite gold).
+-- Side B AI opponent: timer-driven but constrained by the same economy as the player.
 -- Evolving, spawning, and building turrets are driven by pacing timers set in DifficultyConfig.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -97,7 +97,7 @@ local function rebuildTurretsForNewAge(match: Match.Match)
 		local turret = s.turrets[slot]
 		if turret and turret.def.age < s.age then
 			TurretSystem.trySell(match, SIDE, slot)
-			TurretSystem.tryBuild(match, SIDE, slot, true)
+			TurretSystem.tryBuild(match, SIDE, slot, false)
 		end
 	end
 end
@@ -141,9 +141,9 @@ function AIBrain.tick(match: Match.Match)
 		if diffConfig.aiCounterSpawn then
 			rebuildTurretsForNewAge(match)
 		end
-	-- Or force evolve if pacing timer pops or rubberbanding pops
+	-- If pacing falls behind, the AI still has to earn the required XP.
 	elseif now >= state.nextEvolveAt or (state.rubberbandEvolveAt and now >= state.rubberbandEvolveAt) then
-		if Match.tryEvolve(match, SIDE, true) then
+		if Match.tryEvolve(match, SIDE, false) then
 			state.nextEvolveAt = now + diffConfig.aiEvolveInterval
 			state.rubberbandEvolveAt = nil
 			if diffConfig.aiCounterSpawn then
@@ -180,7 +180,7 @@ function AIBrain.tick(match: Match.Match)
 		end
 
 		if emptySlot then
-			if TurretSystem.tryBuild(match, SIDE, emptySlot, true) then
+			if TurretSystem.tryBuild(match, SIDE, emptySlot, false) then
 				state.nextTurretAt = now + diffConfig.aiTurretInterval
 			end
 		end
@@ -207,7 +207,7 @@ function AIBrain.tick(match: Match.Match)
 			end
 
 			if unitId then
-				if UnitSim.requestSpawn(match, SIDE, unitId, true) then
+				if UnitSim.requestSpawn(match, SIDE, unitId, false) then
 					state.nextSpawnAt = now + diffConfig.aiSpawnInterval
 				end
 			end

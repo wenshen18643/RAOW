@@ -9,7 +9,9 @@ local TweenService = game:GetService("TweenService")
 local Units = require(ReplicatedStorage.Shared.Config.Units)
 local Turrets = require(ReplicatedStorage.Shared.Config.Turrets)
 local Specials = require(ReplicatedStorage.Shared.Config.Specials)
+local HeroWeapons = require(ReplicatedStorage.Shared.Config.HeroWeapons)
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
+local Synergies = require(ReplicatedStorage.Shared.Config.Synergies)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Audio = require(script.Parent.Audio)
 
@@ -111,6 +113,26 @@ local ageLabel = label(gui, {
 local xpBg, xpFill = bar(gui, UDim2.new(0.4, 0, 0.06, 0), UDim2.new(0.2, 0, 0.018, 0), Color3.fromRGB(240, 200, 80))
 local xpLabel = label(xpBg, { Size = UDim2.fromScale(1, 1), Text = "", ZIndex = 3 })
 
+local objectiveFrame = Instance.new("Frame")
+objectiveFrame.AnchorPoint = Vector2.new(0.5, 0)
+objectiveFrame.Position = UDim2.new(0.5, 0, 0.135, 0)
+objectiveFrame.Size = UDim2.new(0.48, 0, 0.07, 0)
+objectiveFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
+objectiveFrame.BackgroundTransparency = 0.16
+objectiveFrame.BorderSizePixel = 0
+objectiveFrame.Parent = gui
+local objectiveCorner = Instance.new("UICorner")
+objectiveCorner.CornerRadius = UDim.new(0, 8)
+objectiveCorner.Parent = objectiveFrame
+label(objectiveFrame, {
+	Size = UDim2.fromScale(1, 0.46), Text = "GOAL: DESTROY THE RED ENEMY BASE",
+	TextColor3 = Color3.fromRGB(255, 125, 110), ZIndex = 3,
+})
+local evolveHint = label(objectiveFrame, {
+	Position = UDim2.fromScale(0.02, 0.47), Size = UDim2.fromScale(0.96, 0.42),
+	Text = "Kills grant XP • Evolve to unlock stronger armies", TextColor3 = Color3.fromRGB(205, 205, 220), ZIndex = 3,
+})
+
 -- Difficulty Label (top right)
 local diffLabel = label(gui, {
 	AnchorPoint = Vector2.new(1, 0),
@@ -205,6 +227,81 @@ upgList.HorizontalAlignment = Enum.HorizontalAlignment.Center
 upgList.VerticalAlignment = Enum.VerticalAlignment.Center
 upgList.Parent = upgradesPanel
 
+-- Combination guide: doctrines are intentionally mutually exclusive.
+local guideButton = Instance.new("TextButton")
+guideButton.AnchorPoint = Vector2.new(0, 0)
+guideButton.Position = UDim2.new(0.02, 0, 0.09, 0)
+guideButton.Size = UDim2.new(0.14, 0, 0.045, 0)
+guideButton.BackgroundColor3 = Color3.fromRGB(65, 52, 92)
+guideButton.TextColor3 = Color3.new(1, 1, 1)
+guideButton.Font = FONT
+guideButton.TextScaled = true
+guideButton.Text = "COMBO GUIDE [G]"
+guideButton.Parent = gui
+local guideButtonCorner = Instance.new("UICorner")
+guideButtonCorner.CornerRadius = UDim.new(0, 7)
+guideButtonCorner.Parent = guideButton
+
+local guidePanel = Instance.new("Frame")
+guidePanel.AnchorPoint = Vector2.new(0.5, 0.5)
+guidePanel.Position = UDim2.fromScale(0.5, 0.48)
+guidePanel.Size = UDim2.new(0.52, 0, 0.58, 0)
+guidePanel.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+guidePanel.BackgroundTransparency = 0.04
+guidePanel.BorderSizePixel = 0
+guidePanel.Visible = false
+guidePanel.ZIndex = 20
+guidePanel.Parent = gui
+local guideCorner = Instance.new("UICorner")
+guideCorner.CornerRadius = UDim.new(0, 12)
+guideCorner.Parent = guidePanel
+local guideStroke = Instance.new("UIStroke")
+guideStroke.Color = Color3.fromRGB(170, 140, 230)
+guideStroke.Thickness = 2
+guideStroke.Parent = guidePanel
+
+label(guidePanel, {
+	Position = UDim2.fromScale(0.06, 0.04), Size = UDim2.fromScale(0.88, 0.09),
+	Text = "ARMY COMBINATION GUIDE", ZIndex = 21,
+})
+label(guidePanel, {
+	Position = UDim2.fromScale(0.07, 0.13), Size = UDim2.fromScale(0.86, 0.08),
+	Text = "The first formation you complete locks your doctrine for this battle. Choose carefully.",
+	TextWrapped = true, TextColor3 = Color3.fromRGB(195, 195, 210), ZIndex = 21,
+})
+local guideStatus = label(guidePanel, {
+	Position = UDim2.fromScale(0.12, 0.86), Size = UDim2.fromScale(0.76, 0.07),
+	Text = "Current doctrine: Not chosen", TextColor3 = Color3.fromRGB(245, 210, 110), ZIndex = 21,
+})
+for i, doctrine in Synergies.list do
+	local card = Instance.new("Frame")
+	card.Position = UDim2.fromScale(0.07, 0.22 + (i - 1) * 0.205)
+	card.Size = UDim2.fromScale(0.86, 0.17)
+	card.BackgroundColor3 = doctrine.color:Lerp(Color3.fromRGB(20, 20, 28), 0.72)
+	card.BorderSizePixel = 0
+	card.ZIndex = 21
+	card.Parent = guidePanel
+	local cardCorner = Instance.new("UICorner")
+	cardCorner.CornerRadius = UDim.new(0, 8)
+	cardCorner.Parent = card
+	label(card, {
+		Position = UDim2.fromScale(0.03, 0.08), Size = UDim2.fromScale(0.94, 0.32),
+		Text = doctrine.name, TextColor3 = doctrine.color, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22,
+	})
+	label(card, {
+		Position = UDim2.fromScale(0.03, 0.42), Size = UDim2.fromScale(0.94, 0.46),
+		Text = doctrine.description, TextWrapped = true, TextScaled = false, TextSize = 15,
+		TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(225, 225, 235), ZIndex = 22,
+	})
+end
+
+local function toggleGuide()
+	Audio.play("click")
+	guidePanel.Visible = not guidePanel.Visible
+	upgradesPanel.Visible = false
+end
+guideButton.Activated:Connect(toggleGuide)
+
 local upgButtons = {}
 local function makeUpgBtn(stat: string, text: string)
 	local b = Instance.new("TextButton")
@@ -290,25 +387,50 @@ for i = 1, 6 do
 end
 
 local lastState: { [string]: any } = {}
+local showMessage: (text: string, color: Color3, duration: number?) -> ()
+
+local function rejectAction(reason: string)
+	Audio.play("hover")
+	showMessage(reason, Color3.fromRGB(255, 150, 120), 1.5)
+end
 
 local function slotAction(i: number)
-	Audio.play("click")
 	local age = lastState.age or 1
 	if i <= 4 then
 		local def = Units.byAge[age][i]
 		if def then
+			if (lastState.queueCount or 0) >= (lastState.queueCap or 10) then
+				rejectAction("UNIT QUEUE FULL")
+				return
+			elseif (lastState.gold or 0) < def.cost then
+				rejectAction(`NEED {def.cost - math.floor(lastState.gold or 0)} MORE GOLD`)
+				return
+			end
+			Audio.play("click")
 			Remotes.SpawnUnit:FireServer(def.id)
 		end
 	elseif i == 5 then
+		local tdef = Turrets[age]
+		if (lastState.gold or 0) < tdef.cost then
+			rejectAction(`NEED {tdef.cost - math.floor(lastState.gold or 0)} MORE GOLD`)
+			return
+		end
 		-- build in first empty slot
 		local turrets = lastState.turrets or {}
 		for slotIdx = 1, 4 do
 			if turrets[slotIdx] == false or turrets[slotIdx] == nil then
+				Audio.play("click")
 				Remotes.BuildTurret:FireServer(slotIdx)
 				return
 			end
 		end
+		rejectAction("ALL TURRET SLOTS ARE FULL")
 	elseif i == 6 then
+		if (lastState.specialCd or 0) > 0 then
+			rejectAction(`SPECIAL READY IN {math.ceil(lastState.specialCd)}s`)
+			return
+		end
+		Audio.play("click")
 		Remotes.UseSpecial:FireServer()
 	end
 end
@@ -319,6 +441,12 @@ for i, slot in slots do
 	end)
 end
 evolveBtn.Activated:Connect(function()
+	if not lastState.canEvolve then
+		if lastState.nextAgeXp then
+			rejectAction(`NEED {math.max(0, math.ceil(lastState.nextAgeXp - (lastState.xp or 0)))} MORE XP TO EVOLVE`)
+		end
+		return
+	end
 	Audio.play("buy")
 	Remotes.Evolve:FireServer()
 end)
@@ -339,6 +467,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if key == Enum.KeyCode.E then
 		Audio.play("click")
 		upgradesPanel.Visible = not upgradesPanel.Visible
+	elseif key == Enum.KeyCode.G then
+		toggleGuide()
 	elseif map[key] then
 		local num = map[key]
 		if upgradesPanel.Visible and num <= 3 then
@@ -349,7 +479,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			slotAction(num)
 		end
 	elseif key == Enum.KeyCode.Q then
-		Remotes.Evolve:FireServer()
+		if lastState.canEvolve then
+			Audio.play("buy")
+			Remotes.Evolve:FireServer()
+		elseif lastState.nextAgeXp then
+			rejectAction(`NEED {math.max(0, math.ceil(lastState.nextAgeXp - (lastState.xp or 0)))} MORE XP TO EVOLVE`)
+		end
 	end
 end)
 
@@ -358,10 +493,11 @@ local function refresh(state: { [string]: any })
 	lastState = state
 	local age = state.age :: number
 	local gold = state.gold :: number
+	guideStatus.Text = state.doctrine and `Current doctrine: {state.doctrine} (LOCKED)` or "Current doctrine: Not chosen"
 
-	goldLabel.Text = `{math.floor(gold)} g`
+	goldLabel.Text = `{math.floor(gold)} g  (+{string.format("%.1f", state.incomeRate or 0)}/s)`
 	countLabel.Text = `units {state.unitCount}/20  queue {state.queueCount}`
-	ageLabel.Text = state.ageName
+	ageLabel.Text = `AGE {age} / {#Ages}  •  {string.upper(state.ageName)}`
 	ageLabel.TextColor3 = Ages[age].color:Lerp(Color3.new(1, 1, 1), 0.5)
 
 	if state.nextAgeXp then
@@ -369,9 +505,13 @@ local function refresh(state: { [string]: any })
 		local frac = math.clamp((state.xp - prevReq) / (state.nextAgeXp - prevReq), 0, 1)
 		xpFill.Size = UDim2.fromScale(frac, 1)
 		xpLabel.Text = `XP {math.floor(state.xp)} / {state.nextAgeXp}`
+		local nextAge = age + 1
+		local nextUnits = Units.byAge[nextAge]
+		evolveHint.Text = `EVOLVE → {string.upper(Ages[nextAge].name)}: {nextUnits[1].name}, {nextUnits[2].name}, {Turrets[nextAge].name}, {Specials[nextAge].name}, {HeroWeapons[nextAge].name}`
 	else
 		xpFill.Size = UDim2.fromScale(1, 1)
 		xpLabel.Text = "MAX AGE"
+		evolveHint.Text = "FINAL AGE REACHED • Lead your army to destroy the enemy base"
 	end
 
 	if state.difficulty then
@@ -380,8 +520,9 @@ local function refresh(state: { [string]: any })
 		diffLabel.TextColor3 = colors[state.difficulty] or Color3.new(1, 1, 1)
 	end
 
-	evolveBtn.Visible = state.canEvolve
-	evolveBtn.BackgroundColor3 = Color3.fromRGB(90, 180, 90)
+	evolveBtn.Visible = state.nextAgeXp ~= nil
+	evolveBtn.Text = state.canEvolve and `EVOLVE TO AGE {age + 1} [Q]` or `AGE {age + 1} LOCKED [Q]`
+	evolveBtn.BackgroundColor3 = state.canEvolve and Color3.fromRGB(90, 180, 90) or Color3.fromRGB(65, 65, 72)
 
 	-- updates upgrades buttons
 	local u = state.heroUpgrades or { dmg = 0, health = 0, def = 0 }
@@ -397,8 +538,8 @@ local function refresh(state: { [string]: any })
 		end
 	end
 
-	myBaseFill.Size = UDim2.fromScale(math.clamp(state.baseHpSelf / state.baseMaxHp, 0, 1), 1)
-	enBaseFill.Size = UDim2.fromScale(math.clamp(state.baseHpEnemy / state.baseMaxHp, 0, 1), 1)
+	myBaseFill.Size = UDim2.fromScale(math.clamp(state.baseHpSelf / state.baseMaxHpSelf, 0, 1), 1)
+	enBaseFill.Size = UDim2.fromScale(math.clamp(state.baseHpEnemy / state.baseMaxHpEnemy, 0, 1), 1)
 
 	-- hotbar slots 1-4: units of current age
 	for i = 1, 4 do
@@ -438,7 +579,7 @@ local function refresh(state: { [string]: any })
 	end
 end
 
-local function showMessage(text: string, color: Color3, duration: number?)
+showMessage = function(text: string, color: Color3, duration: number?)
 	msgLabel.Text = text
 	msgLabel.TextColor3 = color
 	if duration then
@@ -493,6 +634,9 @@ function GameUI.start()
 		if event == "MatchStart" then
 			local diffText = (data and data.difficulty) and data.difficulty:upper() or "NORMAL"
 			showMessage(`BATTLE START — {diffText} MODE`, Color3.new(1, 1, 1), 3)
+			task.delay(3.2, function()
+				showMessage("DESTROY THE RED BASE • KILLS GIVE GOLD + XP • EVOLVE THROUGH 5 AGES", Color3.fromRGB(245, 220, 130), 5)
+			end)
 		elseif event == "AgeUp" and data then
 			if data.side == "A" then
 				showMessage(`ADVANCED TO {Ages[data.age].name:upper()}!`, Ages[data.age].color:Lerp(Color3.new(1, 1, 1), 0.4), 3)
@@ -513,6 +657,12 @@ function GameUI.start()
 			end
 		elseif event == "BaseUnderAttack" then
 			baseAlarm()
+		elseif event == "SynergyUnlocked" and data then
+			if data.side == "A" then
+				showMessage(`{string.upper(data.name)} DOCTRINE LOCKED IN!`, Color3.fromRGB(245, 210, 110), 4)
+			else
+				showMessage(`Enemy formed {data.name}`, Color3.fromRGB(255, 140, 120), 3)
+			end
 		end
 	end)
 end

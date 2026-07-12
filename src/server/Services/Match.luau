@@ -25,6 +25,10 @@ export type UnitRecord = {
 	animBasePos: Vector3?,
 	-- status effects (Phase 4)
 	damageAmp: number, -- extra damage taken multiplier from ArmorMelt (0 = none)
+	moveSpeedMult: number,
+	synergyApplied: boolean,
+	laneOffset: number,
+	moveHeading: Vector3,
 	walkStart: number?, -- timestamp when unit started walking (for walk bob anim)
 }
 
@@ -60,6 +64,9 @@ export type SideState = {
 	units: { UnitRecord },
 	turrets: { [number]: TurretRecord? },
 	heroUpgrades: { dmg: number, health: number, def: number },
+	incomeCarry: number,
+	lastEconomyAt: number,
+	doctrine: string?,
 }
 
 export type Match = {
@@ -92,7 +99,47 @@ local function newSide(side: string): SideState
 		units = {},
 		turrets = {},
 		heroUpgrades = { dmg = 0, health = 0, def = 0 },
+		incomeCarry = 0,
+		lastEconomyAt = os.clock(),
+		doctrine = nil,
 	}
+end
+
+function Match.getBaseMaxHp(match: Match, side: string): number
+	local age = match.sides[side].age
+	return GameConfig.BASE_MAX_HP * GameConfig.BASE_HP_MULT_BY_AGE[age]
+end
+
+function Match.getIncomeRate(match: Match, side: string): number
+	local s = match.sides[side]
+	local enemySide = Match.enemyOf(side)
+	local enemyMax = Match.getBaseMaxHp(match, enemySide)
+	local selfMax = Match.getBaseMaxHp(match, side)
+	local selfRatio = (match.map.bases[side].core:GetAttribute("Hp") :: number) / selfMax
+	local enemyRatio = (match.map.bases[enemySide].core:GetAttribute("Hp") :: number) / enemyMax
+	local comeback = math.max(0, enemyRatio - selfRatio) * GameConfig.COMEBACK_INCOME_MAX
+	local elapsed = os.clock() - match.startedAt
+	local mult = 1
+	if elapsed >= GameConfig.SUDDEN_DEATH_START then
+		mult = GameConfig.SUDDEN_DEATH_INCOME_MULT
+	elseif elapsed >= GameConfig.ESCALATION_START then
+		mult = GameConfig.ESCALATION_INCOME_MULT
+	end
+	return (GameConfig.PASSIVE_INCOME_BY_AGE[s.age] + comeback) * mult
+end
+
+function Match.tickEconomy(match: Match, now: number)
+	if match.status ~= "Active" then return end
+	for side, s in match.sides do
+		local dt = math.clamp(now - s.lastEconomyAt, 0, 2)
+		s.lastEconomyAt = now
+		s.incomeCarry += Match.getIncomeRate(match, side) * dt
+		local payout = math.floor(s.incomeCarry)
+		if payout > 0 then
+			s.gold += payout
+			s.incomeCarry -= payout
+		end
+	end
 end
 
 function Match.new(map: MapBuilder.MapHandle, difficulty: string?): Match
@@ -185,6 +232,11 @@ function Match.tryEvolve(match: Match, side: string, bypassXp: boolean?): boolea
 	end
 	local s = match.sides[side]
 	s.age += 1
+	local core = match.map.bases[side].core
+	local oldMax = GameConfig.BASE_MAX_HP * GameConfig.BASE_HP_MULT_BY_AGE[s.age - 1]
+	local newMax = Match.getBaseMaxHp(match, side)
+	local hpRatio = (core:GetAttribute("Hp") :: number) / oldMax
+	core:SetAttribute("Hp", math.max(1, math.floor(newMax * hpRatio)))
 	
 	local newColor = Ages[s.age].color
 	-- Visually evolve the base
@@ -205,12 +257,13 @@ function Match.damageBase(match: Match, side: string, amount: number, killerSide
 		return
 	end
 	local core = match.map.bases[side].core
-	local hp = math.max(0, (core:GetAttribute("Hp") :: number) - amount)
+	local scaledAmount = amount * GameConfig.BASE_DAMAGE_MULT
+	local hp = math.max(0, (core:GetAttribute("Hp") :: number) - scaledAmount)
 	core:SetAttribute("Hp", hp)
 	-- Small XP drip for hitting the base (no gold, prevents farming)
-	match.sides[killerSide].xp += math.floor(amount * 0.05)
+	match.sides[killerSide].xp += math.floor(scaledAmount * 0.05)
 	if match.onBaseDamaged then
-		match.onBaseDamaged(side, amount)
+		match.onBaseDamaged(side, scaledAmount)
 	end
 	if hp <= 0 then
 		match.status = "Ended"
@@ -240,15 +293,20 @@ function Match.buildSnapshot(match: Match): { [string]: any }
 		canEvolve = Match.canEvolve(match, match.playerSide),
 		baseHpSelf = match.map.bases[match.playerSide].core:GetAttribute("Hp"),
 		baseHpEnemy = match.map.bases[Match.enemyOf(match.playerSide)].core:GetAttribute("Hp"),
-		baseMaxHp = GameConfig.BASE_MAX_HP,
+		baseMaxHpSelf = Match.getBaseMaxHp(match, match.playerSide),
+		baseMaxHpEnemy = Match.getBaseMaxHp(match, Match.enemyOf(match.playerSide)),
+		incomeRate = Match.getIncomeRate(match, match.playerSide),
 		specialCd = math.max(0, s.specialReadyAt - os.clock()),
 		enemyAge = enemy.age,
 		unitCount = #s.units,
 		queueCount = #s.queue,
+		unitCap = GameConfig.UNIT_CAP,
+		queueCap = GameConfig.QUEUE_CAP,
 		turrets = turretInfo,
 		status = match.status,
 		difficulty = match.difficulty,
 		heroUpgrades = s.heroUpgrades,
+		doctrine = s.doctrine,
 	}
 end
 

@@ -122,7 +122,7 @@ local function processHit(
 	part: BasePart,
 	finalDamage: number,
 	s: Match.SideState
-)
+): boolean
 	local entityType = part:GetAttribute("EntityType")
 	local model = part:FindFirstAncestorOfClass("Model")
 	if not entityType and model and model.PrimaryPart then
@@ -146,14 +146,17 @@ local function processHit(
 				if effectDef then
 					StatusEffectSystem.apply(match, rec, effectDef.id, finalDamage, match.playerSide)
 				end
+				return true
 			end
 		end
 	elseif entityType == "Base" then
 		local side = part:GetAttribute("Side")
 		if side ~= match.playerSide and typeof(side) == "string" then
 			Match.damageBase(match, side, finalDamage * 0.5, match.playerSide, true)
+			return true
 		end
 	end
+	return false
 end
 
 -- Handle melee weapon swing via RaycastHitbox arc.
@@ -166,12 +169,13 @@ local function handleMelee(
 	finalDamage: number,
 	s: Match.SideState,
 	isSecondary: boolean
-)
+): boolean
 	-- Perform arc sweep; returns { { part: BasePart, position: Vector3 } }
 	local hits = RaycastHitbox.swingArc(origin, direction.Unit, weapon.range, { char })
 
+	local confirmed = false
 	for _, hitResult in hits do
-		processHit(match, hitResult.part, finalDamage, s)
+		confirmed = processHit(match, hitResult.part, finalDamage, s) or confirmed
 		-- Per-hit impact VFX
 		Remotes.FX:FireAllClients("ImpactVFX", {
 			pos = hitResult.position,
@@ -187,6 +191,7 @@ local function handleMelee(
 		age = s.age,
 		isSecondary = isSecondary,
 	})
+	return confirmed
 end
 
 -- Handle hitscan weapon fire via single workspace raycast.
@@ -199,7 +204,7 @@ local function handleHitscan(
 	finalDamage: number,
 	s: Match.SideState,
 	isSecondary: boolean
-)
+): boolean
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = { char }
@@ -216,17 +221,18 @@ local function handleHitscan(
 	})
 
 	if not result then
-		return
+		return false
 	end
 
 	-- Process damage and status on the hit target
-	processHit(match, result.Instance, finalDamage, s)
+	local confirmed = processHit(match, result.Instance, finalDamage, s)
 
 	-- Impact VFX at the hit position
 	Remotes.FX:FireAllClients("ImpactVFX", {
 		pos = hitPos,
 		age = s.age,
 	})
+	return confirmed
 end
 
 -- Validate and apply a weapon shot from the client.
@@ -272,10 +278,14 @@ function HeroSystem.handleFire(match: Match.Match, player: Player, origin: Vecto
 	end
 
 	-- Dispatch based on weapon kind
+	local confirmed: boolean
 	if weapon.kind == "melee" then
-		handleMelee(match, origin, direction, char, weapon, finalDamage, s, isSecondary)
+		confirmed = handleMelee(match, origin, direction, char, weapon, finalDamage, s, isSecondary)
 	else
-		handleHitscan(match, origin, direction, char, weapon, finalDamage, s, isSecondary)
+		confirmed = handleHitscan(match, origin, direction, char, weapon, finalDamage, s, isSecondary)
+	end
+	if confirmed then
+		Remotes.HitConfirm:FireClient(player)
 	end
 end
 

@@ -5,6 +5,12 @@ local GameConfig = {
 	-- Economy
 	STARTING_GOLD = 175,
 	HERO_KILL_BONUS_MULT = 1.5, -- extra reward when hero lands the kill
+	PASSIVE_INCOME_BY_AGE = { 4, 7, 12, 20, 32 }, -- gold per second
+	COMEBACK_INCOME_MAX = 4, -- extra gold/sec when your base is behind
+	ESCALATION_START = 15 * 60,
+	SUDDEN_DEATH_START = 20 * 60,
+	ESCALATION_INCOME_MULT = 2,
+	SUDDEN_DEATH_INCOME_MULT = 4,
 
 	-- Units
 	UNIT_CAP = 20, -- alive per side
@@ -12,7 +18,9 @@ local GameConfig = {
 	SPAWN_INTERVAL = 1.2, -- seconds between queue pops
 
 	-- Base
-	BASE_MAX_HP = 500,
+	BASE_MAX_HP = 750,
+	BASE_HP_MULT_BY_AGE = { 1, 2, 4, 8, 16 },
+	BASE_DAMAGE_MULT = 0.35, -- bases take reduced damage from all attackers
 	TURRET_SLOTS = 4,
 	TURRET_SELL_REFUND = 0.5,
 
