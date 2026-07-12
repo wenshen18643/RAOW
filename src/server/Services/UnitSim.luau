@@ -556,7 +556,7 @@ function UnitSim.tick(match: Match.Match, dt: number)
 			end
 			if not target then
 				target = findTarget(match, rec)
-				(rec :: any).currentTarget = target
+				;(rec :: any).currentTarget = target
 			end
 			
 			local myPos = rec.body.Position
