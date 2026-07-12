@@ -1,0 +1,106 @@
+--!strict
+-- Applies local-perspective ally/enemy colors to replicated unit models.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local TeamVisuals = {}
+local localSide: string? = nil
+local ALLY = Color3.fromRGB(65, 155, 255)
+local ENEMY = Color3.fromRGB(255, 75, 65)
+
+local function updateBody(body: BasePart)
+	local side = body:GetAttribute("Side")
+	if not localSide or typeof(side) ~= "string" then return end
+	local allied = side == localSide
+	local color = allied and ALLY or ENEMY
+	local model = body:FindFirstAncestorOfClass("Model")
+	local highlight = model and model:FindFirstChild("TeamOutline") :: Highlight?
+	if highlight then
+		highlight.FillColor = color
+		highlight.OutlineColor = color
+	end
+	local hpBar = body:FindFirstChild("HpBar")
+	local teamLabel = hpBar and hpBar:FindFirstChild("TeamLabel", true) :: TextLabel?
+	if teamLabel then
+		local role = string.upper((body:GetAttribute("Role") :: string?) or "UNIT")
+		teamLabel.Text = allied and `ALLY  {role}` or `ENEMY  {role}`
+		teamLabel.TextColor3 = color
+	end
+	local fill = hpBar and hpBar:FindFirstChild("Fill", true) :: Frame?
+	if fill then fill.BackgroundColor3 = color end
+end
+
+local function updateBase(core: BasePart)
+	local side = core:GetAttribute("Side")
+	if not localSide or typeof(side) ~= "string" then return end
+	local allied = side == localSide
+	local model = core:FindFirstAncestorOfClass("Model")
+	if model then
+		local highlight = model:FindFirstChild("LocalBaseOutline") :: Highlight?
+		if not highlight then
+			highlight = Instance.new("Highlight")
+			highlight.Name = "LocalBaseOutline"
+			highlight.Adornee = model
+			highlight.FillTransparency = 1
+			highlight.OutlineTransparency = 0.35
+			highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+			highlight.Parent = model
+		end
+		highlight.OutlineColor = allied and ALLY or ENEMY
+	end
+	local marker = core:FindFirstChild("LocalBaseMarker") :: BillboardGui?
+	if not marker then
+		marker = Instance.new("BillboardGui")
+		marker.Name = "LocalBaseMarker"
+		marker.Size = UDim2.fromOffset(150, 30)
+		marker.StudsOffsetWorldSpace = Vector3.new(0, 18, 0)
+		marker.AlwaysOnTop = false
+		marker.MaxDistance = 350
+		marker.Adornee = core
+		marker.Parent = core
+		local text = Instance.new("TextLabel")
+		text.Name = "Text"
+		text.Size = UDim2.fromScale(1, 1)
+		text.BackgroundTransparency = 1
+		text.Font = Enum.Font.GothamBlack
+		text.TextScaled = true
+		text.TextStrokeTransparency = 0.35
+		text.Parent = marker
+	end
+	local text = marker:FindFirstChild("Text") :: TextLabel
+	text.Text = allied and "YOUR BASE" or "ENEMY BASE"
+	text.TextColor3 = allied and ALLY or ENEMY
+end
+
+local function refreshAll()
+	local folder = workspace:FindFirstChild("Units")
+	if folder then
+		for _, item in folder:GetDescendants() do
+			if item:IsA("BasePart") and item:GetAttribute("EntityType") == "Unit" then updateBody(item) end
+		end
+	end
+	local map = workspace:FindFirstChild("Map")
+	if map then
+		for _, item in map:GetDescendants() do
+			if item:IsA("BasePart") and item:GetAttribute("EntityType") == "Base" then updateBase(item) end
+		end
+	end
+end
+
+function TeamVisuals.start()
+	Remotes.StateUpdate.OnClientEvent:Connect(function(state)
+		if typeof(state) == "table" and state.playerSide ~= localSide then
+			localSide = state.playerSide
+			refreshAll()
+		end
+	end)
+	workspace.DescendantAdded:Connect(function(item)
+		if item:IsA("BasePart") then
+			task.defer(function()
+				if item:GetAttribute("EntityType") == "Base" then updateBase(item) else updateBody(item) end
+			end)
+		end
+	end)
+end
+
+return TeamVisuals

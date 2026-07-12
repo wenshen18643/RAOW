@@ -143,10 +143,14 @@ function Audio.start()
 	end)
 
 	local player = Players.LocalPlayer
+	local localSide: string? = nil
+	Remotes.StateUpdate.OnClientEvent:Connect(function(state)
+		if typeof(state) == "table" then localSide = state.playerSide end
+	end)
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
 		if event == "AgeUp" then
 			-- only fanfare for the local player's side
-			if data and data.side == "A" then
+			if data and data.side == localSide then
 				Audio.play("evolve")
 			end
 		elseif event == "Victory" then

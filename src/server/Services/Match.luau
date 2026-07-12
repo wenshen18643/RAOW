@@ -72,10 +72,10 @@ export type SideState = {
 export type Match = {
 	map: MapBuilder.MapHandle,
 	sides: { [string]: SideState },
-	status: "Active" | "Ended",
+	status: "Waiting" | "Active" | "Ended",
 	startedAt: number,
 	winner: string?,
-	playerSide: string,
+	resultCommitted: boolean,
 	difficulty: string, -- "Normal" | "Harder" | "Impossible"
 	projectiles: { ProjectileRecord },
 	-- callbacks wired by init
@@ -146,16 +146,24 @@ function Match.new(map: MapBuilder.MapHandle, difficulty: string?): Match
 	return {
 		map = map,
 		sides = { A = newSide("A"), B = newSide("B") },
-		status = "Active" :: "Active",
+		status = "Waiting" :: "Waiting",
 		startedAt = os.clock(),
 		winner = nil,
-		playerSide = "A",
+		resultCommitted = false,
 		difficulty = difficulty or "Normal",
 		projectiles = {},
 		onAgeUp = nil,
 		onBaseDamaged = nil,
 		onEnd = nil,
 	}
+end
+
+function Match.start(match: Match): boolean
+	if match.status ~= "Waiting" then return false end
+	match.status = "Active"
+	match.startedAt = os.clock()
+	for _, s in match.sides do s.lastEconomyAt = match.startedAt end
+	return true
 end
 
 function Match.enemyOf(side: string): string
@@ -275,9 +283,10 @@ function Match.damageBase(match: Match, side: string, amount: number, killerSide
 end
 
 
-function Match.buildSnapshot(match: Match): { [string]: any }
-	local s = match.sides[match.playerSide]
-	local enemy = match.sides[Match.enemyOf(match.playerSide)]
+function Match.buildSnapshot(match: Match, playerSide: string): { [string]: any }
+	local s = match.sides[playerSide]
+	local enemySide = Match.enemyOf(playerSide)
+	local enemy = match.sides[enemySide]
 	local nextAge = Ages[s.age + 1]
 	local turretInfo = {}
 	for i = 1, GameConfig.TURRET_SLOTS do
@@ -290,12 +299,12 @@ function Match.buildSnapshot(match: Match): { [string]: any }
 		age = s.age,
 		ageName = Ages[s.age].name,
 		nextAgeXp = nextAge and nextAge.xpRequired or nil,
-		canEvolve = Match.canEvolve(match, match.playerSide),
-		baseHpSelf = match.map.bases[match.playerSide].core:GetAttribute("Hp"),
-		baseHpEnemy = match.map.bases[Match.enemyOf(match.playerSide)].core:GetAttribute("Hp"),
-		baseMaxHpSelf = Match.getBaseMaxHp(match, match.playerSide),
-		baseMaxHpEnemy = Match.getBaseMaxHp(match, Match.enemyOf(match.playerSide)),
-		incomeRate = Match.getIncomeRate(match, match.playerSide),
+		canEvolve = Match.canEvolve(match, playerSide),
+		baseHpSelf = match.map.bases[playerSide].core:GetAttribute("Hp"),
+		baseHpEnemy = match.map.bases[enemySide].core:GetAttribute("Hp"),
+		baseMaxHpSelf = Match.getBaseMaxHp(match, playerSide),
+		baseMaxHpEnemy = Match.getBaseMaxHp(match, enemySide),
+		incomeRate = Match.getIncomeRate(match, playerSide),
 		specialCd = math.max(0, s.specialReadyAt - os.clock()),
 		enemyAge = enemy.age,
 		unitCount = #s.units,
@@ -307,6 +316,7 @@ function Match.buildSnapshot(match: Match): { [string]: any }
 		difficulty = match.difficulty,
 		heroUpgrades = s.heroUpgrades,
 		doctrine = s.doctrine,
+		playerSide = playerSide,
 	}
 end
 

@@ -125,7 +125,7 @@ function AIBrain.tick(match: Match.Match)
 
 	-- 1. EVOLVE
 	-- Rubberbanding Tracking System
-	local playerAge = match.sides[match.playerSide].age
+	local playerAge = match.sides[Match.enemyOf(SIDE)].age
 	if playerAge > s.age then
 		if not state.rubberbandEvolveAt then
 			state.rubberbandEvolveAt = now + rng:NextNumber(30, 60)

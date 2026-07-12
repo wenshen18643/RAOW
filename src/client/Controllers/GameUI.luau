@@ -125,7 +125,7 @@ local objectiveCorner = Instance.new("UICorner")
 objectiveCorner.CornerRadius = UDim.new(0, 8)
 objectiveCorner.Parent = objectiveFrame
 label(objectiveFrame, {
-	Size = UDim2.fromScale(1, 0.46), Text = "GOAL: DESTROY THE RED ENEMY BASE",
+	Size = UDim2.fromScale(1, 0.46), Text = "GOAL: DESTROY THE ENEMY BASE",
 	TextColor3 = Color3.fromRGB(255, 125, 110), ZIndex = 3,
 })
 local evolveHint = label(objectiveFrame, {
@@ -138,7 +138,7 @@ local diffLabel = label(gui, {
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(0.98, 0, 0.02, 0),
 	Size = UDim2.new(0.15, 0, 0.03, 0),
-	Text = "Difficulty: Normal",
+	Text = "Mode: 1v1 PvP",
 	TextXAlignment = Enum.TextXAlignment.Right,
 	TextColor3 = Color3.fromRGB(150, 200, 150),
 })
@@ -515,7 +515,7 @@ local function refresh(state: { [string]: any })
 	end
 
 	if state.difficulty then
-		diffLabel.Text = `Difficulty: {state.difficulty}`
+		diffLabel.Text = state.opponentName and `VS {state.opponentName}` or "Mode: 1v1 PvP"
 		local colors = { Normal = Color3.fromRGB(150, 200, 150), Harder = Color3.fromRGB(200, 180, 120), Impossible = Color3.fromRGB(220, 120, 120) }
 		diffLabel.TextColor3 = colors[state.difficulty] or Color3.new(1, 1, 1)
 	end
@@ -591,6 +591,18 @@ showMessage = function(text: string, color: Color3, duration: number?)
 	end
 end
 
+local function setQueueMode(enabled: boolean)
+	for _, widget in {
+		cross, myBaseBg, enBaseBg, ageLabel, xpBg, objectiveFrame, diffLabel,
+		goldFrame, upgradesToggle, countLabel, hotbar, guideButton,
+	} do
+		widget.Visible = not enabled
+	end
+	upgradesPanel.Visible = false
+	guidePanel.Visible = false
+	evolveBtn.Visible = not enabled and lastState.nextAgeXp ~= nil
+end
+
 -- Show/hide the in-match HUD (hidden while the main menu is open).
 function GameUI.setHudVisible(visible: boolean)
 	gui.Enabled = visible
@@ -626,19 +638,19 @@ function GameUI.start()
 	Remotes.StateUpdate.OnClientEvent:Connect(refresh)
 
 	Remotes.DifficultySelected.OnClientEvent:Connect(function(diff: string)
-		diffLabel.Text = `Difficulty: {diff}`
+		diffLabel.Text = "Mode: 1v1 PvP"
 	end)
 
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
 		-- Victory/Defeat are handled by the MainMenu results screen
 		if event == "MatchStart" then
-			local diffText = (data and data.difficulty) and data.difficulty:upper() or "NORMAL"
-			showMessage(`BATTLE START — {diffText} MODE`, Color3.new(1, 1, 1), 3)
+			setQueueMode(false)
+			showMessage("1v1 BATTLE START", Color3.new(1, 1, 1), 3)
 			task.delay(3.2, function()
-				showMessage("DESTROY THE RED BASE • KILLS GIVE GOLD + XP • EVOLVE THROUGH 5 AGES", Color3.fromRGB(245, 220, 130), 5)
+				showMessage("DESTROY THE ENEMY BASE • KILLS GIVE GOLD + XP • EVOLVE THROUGH 5 AGES", Color3.fromRGB(245, 220, 130), 5)
 			end)
 		elseif event == "AgeUp" and data then
-			if data.side == "A" then
+			if data.side == lastState.playerSide then
 				showMessage(`ADVANCED TO {Ages[data.age].name:upper()}!`, Ages[data.age].color:Lerp(Color3.new(1, 1, 1), 0.4), 3)
 			else
 				showMessage("Enemy advanced an age!", Color3.fromRGB(255, 160, 140), 3)
@@ -652,17 +664,29 @@ function GameUI.start()
 				msgLabel.Text = ""
 			end)
 		elseif event == "SpecialFired" and data then
-			if data.side ~= "A" then
+			if data.side ~= lastState.playerSide then
 				showMessage(`Enemy {data.name}! Take cover!`, Color3.fromRGB(255, 140, 120), 2.5)
 			end
 		elseif event == "BaseUnderAttack" then
 			baseAlarm()
 		elseif event == "SynergyUnlocked" and data then
-			if data.side == "A" then
+			if data.side == lastState.playerSide then
 				showMessage(`{string.upper(data.name)} DOCTRINE LOCKED IN!`, Color3.fromRGB(245, 210, 110), 4)
 			else
 				showMessage(`Enemy formed {data.name}`, Color3.fromRGB(255, 140, 120), 3)
 			end
+		elseif event == "WaitingForOpponent" then
+			showMessage("WAITING FOR AN OPPONENT TO JOIN...", Color3.fromRGB(245, 210, 110))
+		elseif event == "QueueStatus" and data then
+			setQueueMode(true)
+			showMessage(`MATCHMAKING • QUEUE POSITION {data.position}`, Color3.fromRGB(130, 205, 255))
+		elseif event == "MatchFound" then
+			setQueueMode(true)
+			showMessage("OPPONENT FOUND • CREATING MATCH SERVER...", Color3.fromRGB(120, 235, 150))
+		elseif event == "QueueError" and data then
+			showMessage(data.message or "MATCHMAKING RETRYING...", Color3.fromRGB(255, 150, 120), 5)
+		elseif event == "OpponentJoinFailed" then
+			showMessage("OPPONENT FAILED TO JOIN • RETURNING TO LOBBY", Color3.fromRGB(255, 150, 120))
 		end
 	end)
 end

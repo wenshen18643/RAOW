@@ -14,24 +14,29 @@ local DATASTORE_NAME = "PlayerProfiles_v1"
 local AUTO_SAVE_INTERVAL = 60 -- seconds between periodic auto-saves
 
 export type PlayerProfile = {
+	schemaVersion: number,
 	wins: number,
 	losses: number,
 	totalKills: number,
+	rating: number,
 	unlockedSkins: { string },
 }
 
 -- Returns a fresh default profile.
 local function defaultProfile(): PlayerProfile
 	return {
+		schemaVersion = 2,
 		wins = 0,
 		losses = 0,
 		totalKills = 0,
+		rating = 1000,
 		unlockedSkins = {},
 	}
 end
 
 -- In-memory cache: Player → profile
 local cache: { [Player]: PlayerProfile } = {}
+local saving: { [Player]: boolean } = {}
 
 -- Reference to the DataStore (nil in Studio when DataStores are disabled)
 local store: DataStore? = nil
@@ -79,6 +84,7 @@ function PlayerData.load(player: Player)
 		profile.wins = result.wins or 0
 		profile.losses = result.losses or 0
 		profile.totalKills = result.totalKills or 0
+		profile.rating = math.clamp(tonumber(result.rating) or 1000, 0, 5000)
 		if result.unlockedSkins and typeof(result.unlockedSkins) == "table" then
 			profile.unlockedSkins = result.unlockedSkins
 		end
@@ -93,26 +99,38 @@ end
 
 -- Saves the cached profile for the player to the DataStore.
 -- Does nothing if no cached profile exists.
-function PlayerData.save(player: Player)
+function PlayerData.save(player: Player): boolean
 	local profile = cache[player]
-	if not profile then
-		return
+	if not profile or saving[player] then
+		return false
 	end
+	saving[player] = true
 
 	local ds = getStore()
 	if not ds then
 		warn("[PlayerData] DataStore unavailable; cannot save profile for " .. player.Name)
-		return
+		saving[player] = nil
+		return false
 	end
 
 	local key = keyFor(player)
-	local ok, err = pcall(function()
-		ds:SetAsync(key, profile)
-	end)
+	local ok = false
+	local err: any = nil
+	for attempt = 1, 3 do
+		ok, err = pcall(function()
+			ds:UpdateAsync(key, function()
+				return profile
+			end)
+		end)
+		if ok then break end
+		if attempt < 3 then task.wait(0.5 * attempt) end
+	end
+	saving[player] = nil
 
 	if not ok then
 		warn("[PlayerData] Failed to save profile for " .. player.Name .. ": " .. tostring(err))
 	end
+	return ok
 end
 
 -- Returns the cached profile for the player, or a default if not yet loaded.
@@ -144,10 +162,35 @@ function PlayerData.addKills(player: Player, count: number)
 	end
 end
 
--- Clean up: save and remove from cache when a player leaves.
-Players.PlayerRemoving:Connect(function(player: Player)
+-- Saves and removes a profile. The match owner calls this after recording any
+-- forfeit so result persistence cannot race a separate PlayerRemoving handler.
+function PlayerData.unload(player: Player)
+	local timeout = os.clock() + 10
+	while saving[player] and os.clock() < timeout do task.wait(0.1) end
 	PlayerData.save(player)
 	cache[player] = nil
+	saving[player] = nil
+end
+
+-- Applies one idempotent match result to both loaded profiles. The caller owns
+-- match-level idempotency and invokes this exactly once per match.
+function PlayerData.recordMatch(winner: Player, loser: Player): (number, number)
+	local winnerProfile = cache[winner]
+	local loserProfile = cache[loser]
+	if not winnerProfile or not loserProfile then return 0, 0 end
+	local expectedWinner = 1 / (1 + 10 ^ ((loserProfile.rating - winnerProfile.rating) / 400))
+	local delta = math.max(1, math.round(32 * (1 - expectedWinner)))
+	winnerProfile.wins += 1
+	loserProfile.losses += 1
+	winnerProfile.rating = math.clamp(winnerProfile.rating + delta, 0, 5000)
+	loserProfile.rating = math.clamp(loserProfile.rating - delta, 0, 5000)
+	return delta, -delta
+end
+
+game:BindToClose(function()
+	for _, player in Players:GetPlayers() do
+		PlayerData.save(player)
+	end
 end)
 
 -- Periodic auto-save: every AUTO_SAVE_INTERVAL seconds, save all online players.

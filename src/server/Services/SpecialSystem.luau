@@ -50,9 +50,12 @@ local function dropProjectile(match: Match.Match, casterSide: string, def: any, 
 				end
 			end
 		end
-		-- can clip the enemy hero too
-		if enemySide == match.playerSide then
-			local player = game:GetService("Players"):GetPlayers()[1]
+		-- Can hit the opposing commander, never the caster.
+		do
+			local player: Player? = nil
+			for _, candidate in game:GetService("Players"):GetPlayers() do
+				if candidate:GetAttribute("Side") == enemySide then player = candidate break end
+			end
 			local char = player and player.Character
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
