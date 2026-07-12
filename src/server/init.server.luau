@@ -142,4 +142,30 @@ task.spawn(function()
 	end
 end)
 
+-- debug handle for Studio testing: DebugCmd:Invoke("addGold", side, amount) etc.
+local debugCmd = Instance.new("BindableFunction")
+debugCmd.Name = "DebugCmd"
+debugCmd.Parent = game:GetService("ServerStorage")
+debugCmd.OnInvoke = function(cmd: string, ...)
+	local match = currentMatch
+	if cmd == "addGold" then
+		local side, amount = ...
+		match.sides[side].gold += amount
+	elseif cmd == "addXp" then
+		local side, amount = ...
+		match.sides[side].xp += amount
+	elseif cmd == "spawn" then
+		local side, unitId = ...
+		return UnitSim.requestSpawn(match, side, unitId)
+	elseif cmd == "evolve" then
+		return Match.tryEvolve(match, (...))
+	elseif cmd == "state" then
+		return Match.buildSnapshot(match)
+	elseif cmd == "sideState" then
+		local s = match.sides[(...)]
+		return { gold = s.gold, xp = s.xp, age = s.age, units = #s.units, queue = #s.queue, heroDeaths = s.heroDeaths }
+	end
+	return nil
+end
+
 print("[AgeOfWarFP] Server ready")

@@ -348,22 +348,24 @@ function UnitSim.tick(match: Match.Match, dt: number)
 					moveModel(rec, CFrame.lookAt(myPos, look))
 				end
 			else
-				-- advance toward target
+				-- advance toward target with separation steering (no hard blocking:
+				-- hard blocks deadlock clumped units)
 				local dir = Vector3.new(toTarget.X, 0, toTarget.Z).Unit
-				local step = dir * rec.def.moveSpeed * dt
-				local newPos = myPos + step
-				-- crowd control: don't walk into a friendly standing ahead
-				local blocked = false
+				local separation = Vector3.zero
 				for _, friend in s.units do
 					if friend ~= rec and not friend.dead then
-						local fd = (friend.body.Position - newPos)
-						if Vector3.new(fd.X, 0, fd.Z).Magnitude < 3 then
-							blocked = true
-							break
+						local off = myPos - friend.body.Position
+						local flatOff = Vector3.new(off.X, 0, off.Z)
+						local d = flatOff.Magnitude
+						if d < 4 and d > 0.01 then
+							separation += flatOff.Unit * ((4 - d) / 4)
 						end
 					end
 				end
-				if not blocked then
+				local moveDir = dir + separation * 1.2
+				if moveDir.Magnitude > 0.01 then
+					moveDir = moveDir.Unit
+					local newPos = myPos + moveDir * rec.def.moveSpeed * dt
 					moveModel(rec, CFrame.lookAt(newPos, newPos + dir))
 				end
 			end
