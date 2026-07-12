@@ -12,10 +12,14 @@ local NAMES = {
 	"UseSpecial", -- ()
 	"Evolve", -- ()
 	"FireWeapon", -- (origin: Vector3, direction: Vector3)
+	"FireWeaponSecondary", -- (origin: Vector3, direction: Vector3)
+	"BuyUpgrade", -- (stat: string)
+	"SelectDifficulty", -- (difficultyName: string)
 	-- server -> client
 	"StateUpdate", -- (state: table) periodic HUD snapshot
 	"MatchEvent", -- (event: string, data: table?) "MatchStart"|"Victory"|"Defeat"|"AgeUp"|"SpecialFired"|"HeroRespawn"
 	"FX", -- (kind: string, data: table) visual effects broadcast
+	"DifficultySelected", -- (difficultyName: string) broadcasts chosen difficulty
 }
 
 local Remotes: { [string]: RemoteEvent } = {}

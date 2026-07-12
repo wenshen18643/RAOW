@@ -1,10 +1,12 @@
 --!strict
 -- Match state container: side state, economy, evolution, win condition.
 -- Systems (UnitSim, TurretSystem, ...) operate on this state.
+-- Supports difficulty scaling (Normal/Harder/Impossible) and status effects.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
+local Units = require(ReplicatedStorage.Shared.Config.Units)
 
 local MapBuilder = require(script.Parent.MapBuilder)
 
@@ -13,9 +15,17 @@ export type UnitRecord = {
 	body: BasePart,
 	def: any, -- Units.UnitDef
 	hp: number,
+	maxHp: number, -- original max HP (for HP bar calculations)
+	scaledDamage: number, -- actual damage after difficulty scaling
 	side: string,
 	nextAttackAt: number,
 	dead: boolean,
+	-- attack animation (lunge) state
+	attackStartedAt: number?,
+	animBasePos: Vector3?,
+	-- status effects (Phase 4)
+	damageAmp: number, -- extra damage taken multiplier from ArmorMelt (0 = none)
+	walkStart: number?, -- timestamp when unit started walking (for walk bob anim)
 }
 
 export type TurretRecord = {
@@ -23,6 +33,19 @@ export type TurretRecord = {
 	model: Model,
 	muzzle: BasePart,
 	nextFireAt: number,
+}
+
+export type ProjectileRecord = {
+	id: string,
+	pos: Vector3,
+	dir: Vector3,
+	speed: number,
+	damage: number,
+	side: string,
+	age: number,
+	target: any?,
+	distanceTraveled: number,
+	maxDistance: number,
 }
 
 export type SideState = {
@@ -36,6 +59,7 @@ export type SideState = {
 	queue: { string }, -- unitIds waiting to spawn
 	units: { UnitRecord },
 	turrets: { [number]: TurretRecord? },
+	heroUpgrades: { dmg: number, health: number, def: number },
 }
 
 export type Match = {
@@ -45,8 +69,11 @@ export type Match = {
 	startedAt: number,
 	winner: string?,
 	playerSide: string,
+	difficulty: string, -- "Normal" | "Harder" | "Impossible"
+	projectiles: { ProjectileRecord },
 	-- callbacks wired by init
 	onAgeUp: (side: string, newAge: number) -> ()?,
+	onBaseDamaged: (side: string, amount: number) -> ()?,
 	onEnd: (winner: string) -> ()?,
 }
 
@@ -64,10 +91,11 @@ local function newSide(side: string): SideState
 		queue = {},
 		units = {},
 		turrets = {},
+		heroUpgrades = { dmg = 0, health = 0, def = 0 },
 	}
 end
 
-function Match.new(map: MapBuilder.MapHandle): Match
+function Match.new(map: MapBuilder.MapHandle, difficulty: string?): Match
 	return {
 		map = map,
 		sides = { A = newSide("A"), B = newSide("B") },
@@ -75,7 +103,10 @@ function Match.new(map: MapBuilder.MapHandle): Match
 		startedAt = os.clock(),
 		winner = nil,
 		playerSide = "A",
+		difficulty = difficulty or "Normal",
+		projectiles = {},
 		onAgeUp = nil,
+		onBaseDamaged = nil,
 		onEnd = nil,
 	}
 end
@@ -84,7 +115,7 @@ function Match.enemyOf(side: string): string
 	return side == "A" and "B" or "A"
 end
 
--- Gold + XP reward for a kill. Hero kills give a bonus.
+-- Gold + XP reward for general fallback (kept for backward compatibility).
 function Match.award(match: Match, side: string, amount: number, isHeroKill: boolean?)
 	if match.status ~= "Active" then
 		return
@@ -95,21 +126,74 @@ function Match.award(match: Match, side: string, amount: number, isHeroKill: boo
 	s.xp += math.floor(amount * mult)
 end
 
+-- Awards gold and XP for a unit kill. Hero kills multiply both by the bonus multiplier.
+-- Returns the actual gold awarded.
+function Match.awardKill(match: Match, killingSide: string, def: any, isHeroKill: boolean?): number
+	if match.status ~= "Active" then
+		return 0
+	end
+	local mult = isHeroKill and GameConfig.HERO_KILL_BONUS_MULT or 1
+	local s = match.sides[killingSide]
+	
+	local goldAward = math.floor(def.killGold * mult)
+	local xpAward = math.floor(def.killXp * mult)
+	
+	s.gold += goldAward
+	s.xp += xpAward
+	
+	return goldAward
+end
+
+-- Awards pity XP to the side whose unit died.
+function Match.awardPityXp(match: Match, dyingSide: string, def: any)
+	if match.status ~= "Active" then
+		return
+	end
+	local s = match.sides[dyingSide]
+	s.xp += def.deathXp
+end
+
+-- Awards resources for killing the player's hero.
+function Match.awardHeroKill(match: Match, killingSide: string, heroAge: number)
+	if match.status ~= "Active" then
+		return
+	end
+	local s = match.sides[killingSide]
+	
+	local meleeDef = Units.byId[`age{heroAge}_melee`]
+	if meleeDef then
+		local baseCost = meleeDef.cost
+		local goldAward = baseCost * 3
+		local xpAward = baseCost * 4
+		
+		s.gold += goldAward
+		s.xp += xpAward
+		
+		print(`[Match] Hero killed! Side {killingSide} awarded {goldAward} Gold, {xpAward} XP`)
+	end
+end
+
 function Match.canEvolve(match: Match, side: string): boolean
 	local s = match.sides[side]
 	local nextAge = Ages[s.age + 1]
 	return nextAge ~= nil and s.xp >= nextAge.xpRequired
 end
 
-function Match.tryEvolve(match: Match, side: string): boolean
-	if match.status ~= "Active" or not Match.canEvolve(match, side) then
+function Match.tryEvolve(match: Match, side: string, bypassXp: boolean?): boolean
+	if match.status ~= "Active" or (not bypassXp and not Match.canEvolve(match, side)) then
 		return false
 	end
 	local s = match.sides[side]
 	s.age += 1
-	-- Recolor base to new age color
-	local base = match.map.bases[side]
-	base.core.Color = Ages[s.age].color
+	
+	local newColor = Ages[s.age].color
+	-- Visually evolve the base
+	MapBuilder.evolveBase(match.map, side, s.age, newColor)
+	
+	-- Remount existing turrets onto the new structures
+	local TurretSystem = require(script.Parent.TurretSystem)
+	TurretSystem.remountTurrets(match, side)
+	
 	if match.onAgeUp then
 		match.onAgeUp(side, s.age)
 	end
@@ -125,6 +209,9 @@ function Match.damageBase(match: Match, side: string, amount: number, killerSide
 	core:SetAttribute("Hp", hp)
 	-- Small XP drip for hitting the base (no gold, prevents farming)
 	match.sides[killerSide].xp += math.floor(amount * 0.05)
+	if match.onBaseDamaged then
+		match.onBaseDamaged(side, amount)
+	end
 	if hp <= 0 then
 		match.status = "Ended"
 		match.winner = Match.enemyOf(side)
@@ -134,20 +221,6 @@ function Match.damageBase(match: Match, side: string, amount: number, killerSide
 	end
 end
 
--- Passive income tick; call once per second.
-function Match.incomeTick(match: Match)
-	if match.status ~= "Active" then
-		return
-	end
-	local elapsed = os.clock() - match.startedAt
-	local income = GameConfig.PASSIVE_GOLD_PER_SEC
-	if elapsed > GameConfig.SURGE_TIME then
-		income *= GameConfig.SURGE_MULT
-	end
-	for _, s in match.sides do
-		s.gold += income
-	end
-end
 
 function Match.buildSnapshot(match: Match): { [string]: any }
 	local s = match.sides[match.playerSide]
@@ -174,6 +247,8 @@ function Match.buildSnapshot(match: Match): { [string]: any }
 		queueCount = #s.queue,
 		turrets = turretInfo,
 		status = match.status,
+		difficulty = match.difficulty,
+		heroUpgrades = s.heroUpgrades,
 	}
 end
 

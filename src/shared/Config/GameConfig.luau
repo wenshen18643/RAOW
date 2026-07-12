@@ -4,10 +4,7 @@
 local GameConfig = {
 	-- Economy
 	STARTING_GOLD = 175,
-	PASSIVE_GOLD_PER_SEC = 2,
 	HERO_KILL_BONUS_MULT = 1.5, -- extra reward when hero lands the kill
-	SURGE_TIME = 20 * 60, -- after this many seconds, passive income surges
-	SURGE_MULT = 4,
 
 	-- Units
 	UNIT_CAP = 20, -- alive per side
@@ -15,8 +12,8 @@ local GameConfig = {
 	SPAWN_INTERVAL = 1.2, -- seconds between queue pops
 
 	-- Base
-	BASE_MAX_HP = 4000,
-	TURRET_SLOTS = 3,
+	BASE_MAX_HP = 500,
+	TURRET_SLOTS = 4,
 	TURRET_SELL_REFUND = 0.5,
 
 	-- Hero

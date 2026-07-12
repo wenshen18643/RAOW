@@ -42,7 +42,7 @@ local function buildTurretModel(def: any, mount: BasePart): (Model, BasePart)
 	return model, barrel
 end
 
-function TurretSystem.tryBuild(match: Match.Match, side: string, slot: number): boolean
+function TurretSystem.tryBuild(match: Match.Match, side: string, slot: number, bypassCost: boolean?): boolean
 	if match.status ~= "Active" then
 		return false
 	end
@@ -51,10 +51,12 @@ function TurretSystem.tryBuild(match: Match.Match, side: string, slot: number): 
 		return false
 	end
 	local def = Turrets[s.age]
-	if s.gold < def.cost then
-		return false
+	if not bypassCost then
+		if s.gold < def.cost then
+			return false
+		end
+		s.gold -= def.cost
 	end
-	s.gold -= def.cost
 	local mount = match.map.bases[side].turretMounts[slot]
 	local model, muzzle = buildTurretModel(def, mount)
 	s.turrets[slot] = { def = def, model = model, muzzle = muzzle, nextFireAt = 0 }
@@ -82,12 +84,30 @@ local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRec
 	local best: Match.UnitRecord? = nil
 	local bestDist = rec.def.range
 
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	local mapFolder = workspace:FindFirstChild("Map")
+	if mapFolder then
+		params.FilterDescendantsInstances = {mapFolder}
+	end
+
 	for _, unit in match.sides[enemySide].units do
 		if not unit.dead then
 			local d = (unit.body.Position - muzzlePos).Magnitude
 			if d < bestDist then
-				bestDist = d
-				best = unit
+				-- Check Line of Sight
+				local hasLOS = true
+				if mapFolder then
+					local res = workspace:Raycast(muzzlePos, unit.body.Position - muzzlePos, params)
+					if res and res.Instance.Name == "Rock" then
+						hasLOS = false
+					end
+				end
+				
+				if hasLOS then
+					bestDist = d
+					best = unit
+				end
 			end
 		end
 	end
@@ -111,6 +131,11 @@ local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRec
 		color = Color3.fromRGB(255, 220, 120),
 	})
 	UnitSim.damageUnit(match, target, rec.def.damage, side, false)
+	Remotes.FX:FireAllClients("Damage", {
+		pos = target.body.Position,
+		amount = rec.def.damage,
+		hero = false,
+	})
 end
 
 function TurretSystem.tick(match: Match.Match)
@@ -135,6 +160,21 @@ function TurretSystem.clearAll(match: Match.Match)
 			end
 		end
 		table.clear(s.turrets)
+	end
+end
+
+function TurretSystem.remountTurrets(match: Match.Match, side: string)
+	local s = match.sides[side]
+	local mounts = match.map.bases[side].turretMounts
+	for slot = 1, GameConfig.TURRET_SLOTS do
+		local rec = s.turrets[slot]
+		if rec then
+			-- Rebuild the turret model on the new mount
+			rec.model:Destroy()
+			local newModel, newMuzzle = buildTurretModel(rec.def, mounts[slot])
+			rec.model = newModel
+			rec.muzzle = newMuzzle
+		end
 	end
 end
 
