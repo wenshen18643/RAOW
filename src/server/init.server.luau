@@ -405,13 +405,21 @@ task.spawn(function()
 end)
 
 -- Server type branches
-if isLobby then
-	LobbyBuilder.build()
-	MatchmakingService.start()
+if isLobby or isStudio then
+	if not isStudio then
+		LobbyBuilder.build()
+		MatchmakingService.start()
+	end
 
 	Remotes.SelectMode.OnServerEvent:Connect(function(player, mode, diffId)
 		if mode == "pvp" then
-			MatchmakingService.enqueue(player)
+			if isStudio then
+				-- Reserved-server teleports don't work in Studio; run PvP as a local PvE match instead.
+				Remotes.MatchEvent:FireClient(player, "QueueError", { message = "PvP unavailable in Studio — starting PvE match." })
+				startPvE(player, DifficultyConfig.DEFAULT)
+			else
+				MatchmakingService.enqueue(player)
+			end
 		elseif mode == "pve" then
 			startPvE(player, diffId)
 		end
@@ -420,25 +428,6 @@ if isLobby then
 	Players.PlayerAdded:Connect(function(player)
 		PlayerData.load(player)
 		-- Lobby players wait in menu; character loads when a mode is selected.
-	end)
-
-	Players.PlayerRemoving:Connect(function(player)
-		local side = sideFor(player)
-		if side and currentMatch and currentMatch.status == "Active" then
-			currentMatch.status = "Ended"
-			currentMatch.winner = Match.enemyOf(side)
-			if currentMatch.onEnd then currentMatch.onEnd(currentMatch.winner :: string) end
-		end
-		playerSides[player] = nil
-		sidePlayers[side] = nil
-		playerReady[player] = nil
-		actionTimes[player] = nil
-		PlayerData.unload(player)
-	end)
-elseif isStudio then
-	-- Studio behaves like a lobby: menu opens, player chooses mode.
-	Players.PlayerAdded:Connect(function(player)
-		PlayerData.load(player)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)

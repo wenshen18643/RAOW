@@ -12,9 +12,28 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Telemetry = require(script.Parent.Telemetry)
 
 local MatchmakingService = {}
-local queue = MemoryStoreService:GetQueue("raow_pvp_queue_v2", 20)
-local presence = MemoryStoreService:GetHashMap("raow_pvp_presence_v2")
-local assignments = MemoryStoreService:GetHashMap("raow_pvp_assignments_v2")
+-- MemoryStore handles are created lazily: GetQueue/GetHashMap throw in
+-- unpublished places (e.g. a local build.rbxl in Studio), which would kill the
+-- whole server boot if run at require time.
+local queue: MemoryStoreQueue = nil :: any
+local presence: MemoryStoreHashMap = nil :: any
+local assignments: MemoryStoreHashMap = nil :: any
+local storesReady = false
+
+local function ensureStores(): boolean
+	if storesReady then return true end
+	local ok, err = pcall(function()
+		queue = MemoryStoreService:GetQueue("raow_pvp_queue_v2", 20)
+		presence = MemoryStoreService:GetHashMap("raow_pvp_presence_v2")
+		assignments = MemoryStoreService:GetHashMap("raow_pvp_assignments_v2")
+	end)
+	if not ok then
+		warn("[Matchmaking] MemoryStore unavailable:", err)
+	end
+	storesReady = ok
+	return ok
+end
+
 local tickets: { [Player]: string } = {}
 local pending: { [Player]: { code: string, data: any, attempts: number } } = {}
 local started = false
@@ -37,6 +56,10 @@ end
 local enqueue: (Player) -> ()
 enqueue = function(player: Player)
 	if player.Parent ~= Players or tickets[player] or pending[player] then return end
+	if not ensureStores() then
+		Remotes.MatchEvent:FireClient(player, "QueueError", { message = "MATCHMAKING UNAVAILABLE ON THIS SERVER" })
+		return
+	end
 	local ticket = HttpService:GenerateGUID(false)
 	local item = { userId = player.UserId, jobId = game.JobId, ticket = ticket, queuedAt = os.time() }
 	local ok, err = pcall(function()
@@ -136,6 +159,7 @@ end
 
 function MatchmakingService.start()
 	if started then return end
+	if not ensureStores() then return end
 	started = true
 	Players.PlayerRemoving:Connect(clearLocal)
 	TeleportService.TeleportInitFailed:Connect(function(player, _result, message)
