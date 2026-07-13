@@ -693,6 +693,16 @@ function UnitSim.tick(match: Match.Match, dt: number)
 					end
 				end
 				
+				local laneCorrection = Vector3.zero
+				if flatDist > rec.def.range * 1.8 then
+					laneCorrection = Vector3.new(0, 0, math.clamp((rec.laneOffset - myPos.Z) / 10, -0.75, 0.75))
+				end
+
+				-- Separation can shove a unit into a rock even when the target direction is
+				-- clear, so obstacle checks must look along the blended desired direction.
+				local desired = dir + separation * 1.35 + laneCorrection
+				local desiredDir = desired.Magnitude > 0.01 and desired.Unit or dir
+
 				-- Obstacle Avoidance Steering (Blockcast for unit width)
 				local obstacleAvoid = Vector3.zero
 				local params = RaycastParams.new()
@@ -700,41 +710,59 @@ function UnitSim.tick(match: Match.Match, dt: number)
 				local mapFolder = workspace:FindFirstChild("Map")
 				if mapFolder then
 					params.FilterDescendantsInstances = {mapFolder}
-					local cf = CFrame.new(myPos + Vector3.new(0, 1, 0), myPos + Vector3.new(0, 1, 0) + dir)
-					local res = workspace:Blockcast(cf, rec.body.Size, dir * 8, params)
+					local origin = myPos + Vector3.new(0, 1, 0)
+					local cf = CFrame.new(origin, origin + desiredDir)
+					local res = workspace:Blockcast(cf, rec.body.Size, desiredDir * 8, params)
 					if res and res.Instance.Name == "Rock" then
 						-- Steer laterally away from the obstacle
-						local normal = res.Normal
-						local lateral = Vector3.new(dir.Z, 0, -dir.X)
-						if lateral:Dot(normal) < 0 then
+						local normal = Vector3.new(res.Normal.X, 0, res.Normal.Z)
+						local lateral = Vector3.new(desiredDir.Z, 0, -desiredDir.X)
+						if normal.Magnitude > 0.1 and lateral:Dot(normal) < 0 then
 							lateral = -lateral
 						end
 						obstacleAvoid = lateral * 3.5
 					end
 				end
 
-				local laneCorrection = Vector3.zero
-				if flatDist > rec.def.range * 1.8 then
-					laneCorrection = Vector3.new(0, 0, math.clamp((rec.laneOffset - myPos.Z) / 10, -0.75, 0.75))
-				end
-				local moveDir = dir + separation * 1.35 + obstacleAvoid + laneCorrection
+				local moveDir = desired + obstacleAvoid
 				if moveDir.Magnitude > 0.01 then
 					setAnimState(rec, "walk")
 					moveDir = moveDir.Unit
 					local steerAlpha = 1 - math.exp(-dt * 7)
 					rec.moveHeading = rec.moveHeading:Lerp(moveDir, steerAlpha)
 					if rec.moveHeading.Magnitude > 0.01 then rec.moveHeading = rec.moveHeading.Unit end
-					local step = rec.moveHeading * rec.def.moveSpeed * rec.moveSpeedMult * dt
+					local stepSize = rec.def.moveSpeed * rec.moveSpeedMult * dt
+					local step = rec.moveHeading * stepSize
 					local newPos = myPos + step
 					-- Hard collision: never step into a rock (steering only nudges; this is the wall)
 					if mapFolder and step.Magnitude > 0.001 then
-						local wallCf = CFrame.new(myPos + Vector3.new(0, 1, 0), myPos + Vector3.new(0, 1, 0) + rec.moveHeading)
+						local origin = myPos + Vector3.new(0, 1, 0)
+						local wallCf = CFrame.new(origin, origin + rec.moveHeading)
 						local wallHit = workspace:Blockcast(wallCf, rec.body.Size, step + step.Unit * 0.5, params)
 						if wallHit and wallHit.Instance.Name == "Rock" then
-							-- Slide along the rock face instead of passing through
 							local n = Vector3.new(wallHit.Normal.X, 0, wallHit.Normal.Z)
-							local slide = step - n * step:Dot(n)
-							newPos = myPos + slide
+							if n.Magnitude > 0.1 then
+								n = n.Unit -- normalize AFTER stripping Y, or the slide is too weak
+								local into = step:Dot(n)
+								if into < 0 then
+									step -= n * into -- remove the into-rock component: slide along the face
+								end
+								-- Head-on contact leaves almost no slide; add a tangential nudge
+								-- so the unit flows around the rock instead of freezing on it.
+								if step.Magnitude < stepSize * 0.3 then
+									local lateral = Vector3.new(n.Z, 0, -n.X)
+									if lateral:Dot(rec.moveHeading) < 0 then
+										lateral = -lateral
+									end
+									step += lateral * stepSize
+								end
+							else
+								-- Blockcast started inside the rock or clipped a top edge: the normal
+								-- is unreliable, so step out sideways instead of deeper into the rock.
+								local lateral = Vector3.new(rec.moveHeading.Z, 0, -rec.moveHeading.X)
+								step = lateral * stepSize
+							end
+							newPos = myPos + step
 						end
 					end
 					moveModel(rec, CFrame.lookAt(newPos, newPos + rec.moveHeading))
