@@ -130,10 +130,13 @@ local function coordinateOnePair()
 	end
 end
 
+function MatchmakingService.enqueue(player: Player)
+	enqueue(player)
+end
+
 function MatchmakingService.start()
 	if started then return end
 	started = true
-	Remotes.SelectDifficulty.OnServerEvent:Connect(enqueue)
 	Players.PlayerRemoving:Connect(clearLocal)
 	TeleportService.TeleportInitFailed:Connect(function(player, _result, message)
 		local info = pending[player]

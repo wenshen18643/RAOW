@@ -658,10 +658,19 @@ function GameUI.start()
 		-- Victory/Defeat are handled by the MainMenu results screen
 		if event == "MatchStart" then
 			setQueueMode(false)
-			showMessage("1v1 BATTLE START", Color3.new(1, 1, 1), 10)
-			task.delay(10.2, function()
-				showMessage("DESTROY THE ENEMY BASE • KILLS GIVE GOLD + XP • EVOLVE THROUGH 5 AGES", Color3.fromRGB(245, 220, 130), 5)
-			end)
+			local mode = data and data.mode
+			if mode == "PvP" then
+				showMessage("1v1 BATTLE START", Color3.new(1, 1, 1), 10)
+				task.delay(10.2, function()
+					showMessage("DESTROY THE ENEMY BASE • KILLS GIVE GOLD + XP • EVOLVE THROUGH 5 AGES", Color3.fromRGB(245, 220, 130), 5)
+				end)
+			else
+				local diffText = (data and data.difficulty) and data.difficulty:upper() or "NORMAL"
+				showMessage(`BATTLE START — {diffText} MODE`, Color3.new(1, 1, 1), 10)
+				task.delay(10.2, function()
+					showMessage("DESTROY THE ENEMY BASE • KILLS GIVE GOLD + XP • EVOLVE THROUGH 5 AGES", Color3.fromRGB(245, 220, 130), 5)
+				end)
+			end
 		elseif event == "AgeUp" and data then
 			if data.side == lastState.playerSide then
 				showMessage(`ADVANCED TO {Ages[data.age].name:upper()}!`, Ages[data.age].color:Lerp(Color3.new(1, 1, 1), 0.4), 3)

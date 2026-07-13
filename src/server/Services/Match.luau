@@ -77,6 +77,7 @@ export type Match = {
 	winner: string?,
 	resultCommitted: boolean,
 	difficulty: string, -- "Normal" | "Harder" | "Impossible"
+	mode: "PvE" | "PvP",
 	projectiles: { ProjectileRecord },
 	-- callbacks wired by init
 	onAgeUp: (side: string, newAge: number) -> ()?,
@@ -151,6 +152,7 @@ function Match.new(map: MapBuilder.MapHandle, difficulty: string?): Match
 		winner = nil,
 		resultCommitted = false,
 		difficulty = difficulty or "Normal",
+		mode = "PvE" :: "PvE",
 		projectiles = {},
 		onAgeUp = nil,
 		onBaseDamaged = nil,
@@ -314,6 +316,7 @@ function Match.buildSnapshot(match: Match, playerSide: string): { [string]: any 
 		turrets = turretInfo,
 		status = match.status,
 		difficulty = match.difficulty,
+		mode = match.mode,
 		heroUpgrades = s.heroUpgrades,
 		doctrine = s.doctrine,
 		playerSide = playerSide,

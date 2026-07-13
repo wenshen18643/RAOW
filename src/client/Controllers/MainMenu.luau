@@ -32,6 +32,7 @@ local orbitConn: RBXScriptConnection? = nil
 local matchStartAt = os.clock()
 local lastAgeName = "Stone Age"
 local lastDifficulty = "Normal"
+local lastMode = "PvE"
 
 --------------------------------------------------------------------------------
 -- widget helpers
@@ -287,11 +288,13 @@ function MainMenu.start()
 	})
 
 	-- panels
-	local diffPanel = panel(gui, UDim2.new(0.46, 0, 0.5, 0))
+	local modePanel = panel(gui, UDim2.new(0.46, 0, 0.5, 0))
+	local diffPanel = panel(gui, UDim2.new(0.46, 0, 0.58, 0))
 	local settingsPanel = panel(gui, UDim2.new(0.46, 0, 0.62, 0))
 	local helpPanel = panel(gui, UDim2.new(0.5, 0, 0.66, 0))
 
 	local function closePanels()
+		modePanel.Visible = false
 		diffPanel.Visible = false
 		settingsPanel.Visible = false
 		helpPanel.Visible = false
@@ -300,7 +303,7 @@ function MainMenu.start()
 	-- main buttons (direct children of menuRoot so input isn't blocked by an intermediate holder)
 	button(menuRoot, "PLAY", UDim2.fromScale(0.5, 0.42), UDim2.new(0.22, 0, 0.085, 0), Color3.fromRGB(50, 130, 70), function()
 		closePanels()
-		diffPanel.Visible = true
+		modePanel.Visible = true
 	end)
 	button(menuRoot, "SETTINGS", UDim2.fromScale(0.5, 0.55), UDim2.new(0.22, 0, 0.07, 0), Color3.fromRGB(55, 65, 90), function()
 		closePanels()
@@ -312,18 +315,60 @@ function MainMenu.start()
 	end)
 
 	--------------------------------------------------------------------------------
-	-- difficulty panel
+	-- mode selection panel
+	--------------------------------------------------------------------------------
+	label(modePanel, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.06, 0),
+		Size = UDim2.new(0.8, 0, 0.14, 0),
+		Text = "SELECT MODE",
+		ZIndex = 11,
+	})
+
+	button(modePanel, "PvE vs AI", UDim2.fromScale(0.5, 0.32), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(50, 130, 70), function()
+		closePanels()
+		diffPanel.Visible = true
+	end).ZIndex = 11
+	label(modePanel, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.39, 0),
+		Size = UDim2.new(0.7, 0, 0.035, 0),
+		Text = "Fight the AI across five ages.",
+		TextColor3 = Color3.fromRGB(170, 170, 180),
+		ZIndex = 11,
+	})
+
+	button(modePanel, "PvP 1v1", UDim2.fromScale(0.5, 0.62), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(60, 100, 160), function()
+		Remotes.SelectMode:FireServer("pvp", "Normal")
+		closePanels()
+		-- menu stays open so the queue status overlay is visible
+	end).ZIndex = 11
+	label(modePanel, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.69, 0),
+		Size = UDim2.new(0.7, 0, 0.035, 0),
+		Text = "Ranked matchmaking against another player.",
+		TextColor3 = Color3.fromRGB(170, 170, 180),
+		ZIndex = 11,
+	})
+
+	button(modePanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.08, 0), Color3.fromRGB(60, 60, 70), function()
+		modePanel.Visible = false
+	end).ZIndex = 11
+
+	--------------------------------------------------------------------------------
+	-- difficulty panel (PvE)
 	--------------------------------------------------------------------------------
 	label(diffPanel, {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.06, 0),
 		Size = UDim2.new(0.8, 0, 0.14, 0),
-		Text = "READY FOR 1v1",
+		Text = "PvE DIFFICULTY",
 		ZIndex = 11,
 	})
 
-	local function play(diffId: string)
-		Remotes.SelectDifficulty:FireServer(diffId)
+	local function startPve(diffId: string)
+		Remotes.SelectMode:FireServer("pve", diffId)
 		closePanels()
 		menuRoot.Visible = false
 		menuOpen = false
@@ -332,24 +377,27 @@ function MainMenu.start()
 	end
 
 	local diffs: { { string | Color3 } } = {
-		{ "READY", "Two equal player sides. The match starts when both players are ready.", Color3.fromRGB(60, 140, 70), "Normal" },
+		{ "NORMAL", "Standard AI pacing and stats.", Color3.fromRGB(60, 140, 70), "Normal" },
+		{ "HARDER", "Stronger AI with reactive counter-spawns.", Color3.fromRGB(190, 130, 50), "Harder" },
+		{ "IMPOSSIBLE", "Max difficulty. The AI plays to win.", Color3.fromRGB(170, 60, 60), "Impossible" },
 	}
 	for i, d in diffs do
-		local y = 0.24 + i * 0.19
-		button(diffPanel, d[1] :: string, UDim2.fromScale(0.5, y), UDim2.new(0.6, 0, 0.13, 0), d[3] :: Color3, function()
-			play(d[4] :: string)
+		local y = 0.22 + i * 0.19
+		button(diffPanel, d[1] :: string, UDim2.fromScale(0.5, y), UDim2.new(0.55, 0, 0.11, 0), d[3] :: Color3, function()
+			startPve(d[4] :: string)
 		end).ZIndex = 11
 		label(diffPanel, {
 			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, y + 0.068, 0),
-			Size = UDim2.new(0.7, 0, 0.035, 0),
+			Position = UDim2.new(0.5, 0, y + 0.06, 0),
+			Size = UDim2.new(0.7, 0, 0.03, 0),
 			Text = d[2] :: string,
 			TextColor3 = Color3.fromRGB(170, 170, 180),
 			ZIndex = 11,
 		})
 	end
 	button(diffPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.08, 0), Color3.fromRGB(60, 60, 70), function()
-		diffPanel.Visible = false
+		closePanels()
+		modePanel.Visible = true
 	end).ZIndex = 11
 
 	--------------------------------------------------------------------------------
@@ -466,7 +514,8 @@ function MainMenu.start()
 		resultTitle.Text = won and "VICTORY" or "DEFEAT"
 		resultTitle.TextColor3 = won and Color3.fromRGB(120, 230, 120) or Color3.fromRGB(230, 90, 80)
 		local ratingText = ratingDelta and `\nRating:  {ratingDelta >= 0 and "+" or ""}{ratingDelta}` or ""
-		resultStats.Text = `Mode:  1v1 PvP\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}`
+		local modeText = lastMode == "PvP" and "1v1 PvP" or `PvE • {lastDifficulty:upper()}`
+		resultStats.Text = `Mode:  {modeText}\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}`
 		results.Visible = true
 		task.spawn(function()
 			for t = restartIn, 1, -1 do
@@ -498,6 +547,9 @@ function MainMenu.start()
 			if typeof(state.difficulty) == "string" then
 				lastDifficulty = state.difficulty
 			end
+			if typeof(state.mode) == "string" then
+				lastMode = state.mode
+			end
 		end
 	end)
 
@@ -512,6 +564,13 @@ function MainMenu.start()
 			menuOpen = false
 			stopOrbit()
 			GameUI.setHudVisible(true)
+		elseif event == "ReturnToMenu" then
+			results.Visible = false
+			closePanels()
+			menuRoot.Visible = true
+			menuOpen = true
+			startOrbit()
+			GameUI.setHudVisible(false)
 		end
 	end)
 
