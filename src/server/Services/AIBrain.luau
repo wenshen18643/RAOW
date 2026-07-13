@@ -206,6 +206,20 @@ function AIBrain.tick(match: Match.Match)
 				unitId = pickUnit(s.age, nil)
 			end
 
+			-- If the chosen unit is unaffordable, fall back to the priciest one we can pay for,
+			-- so an expensive counter pick never stalls spawning entirely.
+			if unitId and Units.byId[unitId].cost > s.gold then
+				local best: string? = nil
+				local bestCost = -1
+				for _, def in Units.byAge[s.age] do
+					if def.cost <= s.gold and def.cost > bestCost then
+						best = def.id
+						bestCost = def.cost
+					end
+				end
+				unitId = best
+			end
+
 			if unitId then
 				if UnitSim.requestSpawn(match, SIDE, unitId, false) then
 					state.nextSpawnAt = now + diffConfig.aiSpawnInterval

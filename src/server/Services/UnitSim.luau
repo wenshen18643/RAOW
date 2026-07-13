@@ -50,7 +50,7 @@ local function getUnitsFolder(): Folder
 	return unitsFolder :: Folder
 end
 
-local function makeHpBar(body: BasePart, side: string, role: string): Frame
+local function makeHpBar(body: BasePart, side: string, unitName: string): Frame
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "HpBar"
 	gui.Size = UDim2.fromOffset(72, 24)
@@ -65,7 +65,7 @@ local function makeHpBar(body: BasePart, side: string, role: string): Frame
 	team.TextSize = 11
 	team.TextStrokeTransparency = 0.45
 	team.TextColor3 = side == "A" and Color3.fromRGB(100, 190, 255) or Color3.fromRGB(255, 105, 95)
-	team.Text = side == "A" and `ALLY  {string.upper(role)}` or `ENEMY  {string.upper(role)}`
+	team.Text = side == "A" and `ALLY  {string.upper(unitName)}` or `ENEMY  {string.upper(unitName)}`
 	team.Parent = gui
 	local bg = Instance.new("Frame")
 	bg.Position = UDim2.fromOffset(0, 17)
@@ -105,7 +105,7 @@ local function buildUnitModel(def: any, side: string, spawnCf: CFrame): (Model, 
 
 	-- No recycled model available — build a fresh one
 	local model, body = UnitFactory.build(def, side, spawnCf)
-	makeHpBar(body, side, def.role)
+	makeHpBar(body, side, def.name)
 	model.Parent = getUnitsFolder()
 	return model, body
 end
