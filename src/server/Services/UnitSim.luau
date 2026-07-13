@@ -273,8 +273,9 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	local unitId = table.remove(s.queue, 1) :: string
 	local def = Units.byId[unitId]
 	local spawnCf = match.map.bases[s.side].unitSpawn
-	-- Single-file queue formation: each unit spawns behind the previous one.
-	local formationSlots = { 0, 5, 10, 15, 20, 25, 30 }
+	-- Single-file queue formation: each unit spawns slightly behind the previous one.
+	-- Max offset must stay under 14 (spawn point is 14 studs in front of the base).
+	local formationSlots = { 0, 3, 6, 9, 12 }
 	local formationIndex = (#s.units % #formationSlots) + 1
 	local backOff = formationSlots[formationIndex]
 	spawnCf = spawnCf * CFrame.new(0, 0, backOff) -- spawn cf faces lane; +z is behind
