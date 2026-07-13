@@ -339,7 +339,8 @@ local function findTarget(match: Match.Match, rec: Match.UnitRecord): Target
 	local myPos = rec.body.Position
 	local best: Target? = nil
 	local bestDist = math.huge
-	local isRanged = rec.def.role == "ranged"
+	-- Any unit that attacks from beyond melee reach needs line of sight (ranged AND heavies like Cannoneer/Tank)
+	local isRanged = rec.def.range > 8
 
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
@@ -485,6 +486,21 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 			local flatDist = Vector3.new(toTarget.X, 0, toTarget.Z).Magnitude - target.radius
 			if flatDist > rec.def.range then
 				return -- The player/unit dodged out of range!
+			end
+
+			-- Long-reach instant attacks (Cannoneer, Tank) can't hit through terrain
+			if rec.def.range > 8 then
+				local losParams = RaycastParams.new()
+				losParams.FilterType = Enum.RaycastFilterType.Include
+				local mapFolder = workspace:FindFirstChild("Map")
+				if mapFolder then
+					losParams.FilterDescendantsInstances = { mapFolder }
+					local fromPos = rec.body.Position + Vector3.new(0, 1.5, 0)
+					local res = workspace:Raycast(fromPos, currentPos - fromPos, losParams)
+					if res and res.Instance.Name == "Rock" then
+						return -- blocked by terrain
+					end
+				end
 			end
 
 			-- Apply damage
@@ -637,7 +653,7 @@ function UnitSim.tick(match: Match.Match, dt: number)
 			local flatDist = Vector3.new(toTarget.X, 0, toTarget.Z).Magnitude - target.radius
 
 			local hasLOS = true
-			if rec.def.role == "ranged" then
+			if rec.def.range > 8 then
 				local params = RaycastParams.new()
 				params.FilterType = Enum.RaycastFilterType.Include
 				local mapFolder = workspace:FindFirstChild("Map")
@@ -712,7 +728,19 @@ function UnitSim.tick(match: Match.Match, dt: number)
 					local steerAlpha = 1 - math.exp(-dt * 7)
 					rec.moveHeading = rec.moveHeading:Lerp(moveDir, steerAlpha)
 					if rec.moveHeading.Magnitude > 0.01 then rec.moveHeading = rec.moveHeading.Unit end
-					local newPos = myPos + rec.moveHeading * rec.def.moveSpeed * rec.moveSpeedMult * dt
+					local step = rec.moveHeading * rec.def.moveSpeed * rec.moveSpeedMult * dt
+					local newPos = myPos + step
+					-- Hard collision: never step into a rock (steering only nudges; this is the wall)
+					if mapFolder and step.Magnitude > 0.001 then
+						local wallCf = CFrame.new(myPos + Vector3.new(0, 1, 0), myPos + Vector3.new(0, 1, 0) + rec.moveHeading)
+						local wallHit = workspace:Blockcast(wallCf, rec.body.Size, step + step.Unit * 0.5, params)
+						if wallHit and wallHit.Instance.Name == "Rock" then
+							-- Slide along the rock face instead of passing through
+							local n = Vector3.new(wallHit.Normal.X, 0, wallHit.Normal.Z)
+							local slide = step - n * step:Dot(n)
+							newPos = myPos + slide
+						end
+					end
 					moveModel(rec, CFrame.lookAt(newPos, newPos + rec.moveHeading))
 				end
 			end

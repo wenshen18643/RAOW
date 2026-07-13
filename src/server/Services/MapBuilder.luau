@@ -189,7 +189,7 @@ function MapBuilder.build(): MapHandle
 		-- Generate on Side A (negative X)
 		local x = rng:NextNumber(-LANE_LEN / 2 + 30, -15)
 		local z = rng:NextNumber(-LANE_WID / 2 + 6, LANE_WID / 2 - 6)
-		local s = rng:NextNumber(6, 12)
+		local s = rng:NextNumber(3, 6)
 		local rotY = rng:NextNumber(0, math.pi)
 		
 		-- Place Side A Rock
