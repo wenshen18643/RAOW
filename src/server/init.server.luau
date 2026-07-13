@@ -436,20 +436,22 @@ if isLobby then
 		PlayerData.unload(player)
 	end)
 elseif isStudio then
-	-- Studio defaults to PvE for easy testing.
+	-- Studio behaves like a lobby: menu opens, player chooses mode.
 	Players.PlayerAdded:Connect(function(player)
 		PlayerData.load(player)
-		task.delay(0.5, function()
-			startPvE(player, DifficultyConfig.DEFAULT)
-		end)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
-		if currentMatch and currentMatch.status == "Active" and sideFor(player) then
+		local side = sideFor(player)
+		if side and currentMatch and currentMatch.status == "Active" then
 			currentMatch.status = "Ended"
-			currentMatch.winner = "B"
-			if currentMatch.onEnd then currentMatch.onEnd("B") end
+			currentMatch.winner = Match.enemyOf(side)
+			if currentMatch.onEnd then currentMatch.onEnd(currentMatch.winner :: string) end
 		end
+		playerSides[player] = nil
+		sidePlayers[side] = nil
+		playerReady[player] = nil
+		actionTimes[player] = nil
 		PlayerData.unload(player)
 	end)
 else
