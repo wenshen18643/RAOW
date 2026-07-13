@@ -9,7 +9,6 @@ local Debris = game:GetService("Debris")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Units = require(ReplicatedStorage.Shared.Config.Units)
-local DifficultyConfig = require(ReplicatedStorage.Shared.Config.DifficultyConfig)
 local StatusEffects = require(ReplicatedStorage.Shared.Config.StatusEffects)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
@@ -18,8 +17,16 @@ local UnitFactory = require(script.Parent.UnitFactory)
 local Synergies = require(ReplicatedStorage.Shared.Config.Synergies)
 local AnimController = require(script.Parent.AnimController)
 local ObjectPool = require(script.Parent.ObjectPool)
+local PlayerData = require(script.Parent.PlayerData)
 
 local UnitSim = {}
+
+local function playerForSide(side: string): Player?
+	for _, player in Players:GetPlayers() do
+		if player:GetAttribute("Side") == side then return player end
+	end
+	return nil
+end
 
 local ATTACK_ANIM_DURATION = 0.35
 -- Whole-body lunge/recoil is now just a subtle accent; the client UnitAnimator
@@ -65,7 +72,7 @@ local function makeHpBar(body: BasePart, side: string, unitName: string): Frame
 	team.TextSize = 11
 	team.TextStrokeTransparency = 0.45
 	team.TextColor3 = side == "A" and Color3.fromRGB(100, 190, 255) or Color3.fromRGB(255, 105, 95)
-	team.Text = side == "A" and `ALLY  {string.upper(unitName)}` or `ENEMY  {string.upper(unitName)}`
+	team.Text = `TEAM {side}  {string.upper(unitName)}`
 	team.Parent = gui
 	local bg = Instance.new("Frame")
 	bg.Position = UDim2.fromOffset(0, 17)
@@ -135,8 +142,10 @@ function UnitSim.killUnit(match: Match.Match, rec: Match.UnitRecord, killerSide:
 	if killerSide then
 		local goldAwarded = Match.awardKill(match, killerSide, rec.def, isHeroKill)
 		-- gold popup for kills made by the player's side
-		if killerSide == match.playerSide then
-			Remotes.FX:FireAllClients("Reward", {
+		local player = playerForSide(killerSide)
+		if player then
+			PlayerData.addKills(player, 1)
+			Remotes.FX:FireClient(player, "Reward", {
 				pos = rec.body.Position + Vector3.new(0, rec.body.Size.Y / 2 + 1, 0),
 				amount = goldAwarded,
 			})
@@ -190,11 +199,6 @@ function UnitSim.findRecordByPart(match: Match.Match, part: BasePart): Match.Uni
 		end
 	end
 	return nil
-end
-
--- Get the difficulty config for the current match
-local function getDifficulty(match: Match.Match): DifficultyConfig.DifficultyDef
-	return DifficultyConfig.LEVELS[match.difficulty] or DifficultyConfig.LEVELS[DifficultyConfig.DEFAULT]
 end
 
 local function applyDoctrineBuff(rec: Match.UnitRecord, doctrineId: string)
@@ -281,14 +285,9 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	spawnCf = spawnCf * CFrame.new(0, 0, backOff) -- spawn cf faces lane; +z is behind
 	local model, body = buildUnitModel(def, s.side, spawnCf)
 
-	-- Apply difficulty scaling for enemy (side B) units
-	local diffConfig = getDifficulty(match)
+	-- PvP uses identical base stats for both sides.
 	local scaledHp = def.hp
 	local scaledDamage = def.damage
-	if s.side ~= match.playerSide then
-		scaledHp = math.floor(def.hp * diffConfig.hpMult)
-		scaledDamage = math.floor(def.damage * diffConfig.damageMult)
-	end
 
 	local rec: Match.UnitRecord = {
 		model = model,
@@ -317,19 +316,16 @@ export type Target = {
 	unitRec: Match.UnitRecord?,
 	humanoid: Humanoid?,
 	radius: number,
+	side: string,
 }
 
 local function heroTargetFor(match: Match.Match, enemySide: string): Target?
-	-- only side A (player) has a hero
-	if enemySide ~= match.playerSide then
-		return nil
-	end
-	local player = Players:GetPlayers()[1]
+	local player = playerForSide(enemySide)
 	local char = player and player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if hum and root and hum.Health > 0 then
-		return { kind = "hero", pos = root.Position, unitRec = nil, humanoid = hum, radius = 2 }
+		return { kind = "hero", pos = root.Position, unitRec = nil, humanoid = hum, radius = 2, side = enemySide }
 	end
 	return nil
 end
@@ -363,7 +359,7 @@ local function findTarget(match: Match.Match, rec: Match.UnitRecord): Target
 			local d = (enemy.body.Position - myPos).Magnitude - radius
 			if d < bestDist and hasLOS(enemy.body.Position) then
 				bestDist = d
-				best = { kind = "unit", pos = enemy.body.Position, unitRec = enemy, humanoid = nil, radius = radius }
+				best = { kind = "unit", pos = enemy.body.Position, unitRec = enemy, humanoid = nil, radius = radius, side = enemySide }
 			end
 		end
 	end
@@ -382,7 +378,7 @@ local function findTarget(match: Match.Match, rec: Match.UnitRecord): Target
 	local dBase = (core.Position - myPos).Magnitude - baseRadius
 	if dBase < bestDist then
 		bestDist = dBase
-		best = { kind = "base", pos = core.Position, unitRec = nil, humanoid = nil, radius = baseRadius }
+		best = { kind = "base", pos = core.Position, unitRec = nil, humanoid = nil, radius = baseRadius, side = enemySide }
 	end
 
 	return best :: Target
@@ -509,7 +505,7 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 				applyStatusEffect(match, rec, target)
 				Remotes.FX:FireAllClients("ImpactVFX", { pos = target.unitRec.body.Position, age = rec.def.age })
 			elseif target.kind == "hero" and target.humanoid then
-				local s = match.sides[match.playerSide]
+				local s = match.sides[target.side]
 				local defLevel = (s.heroUpgrades and s.heroUpgrades.def) or 0
 				local defMult = 1 - math.min(0.50, 0.10 * defLevel)
 				target.humanoid:TakeDamage(damage * defMult)
@@ -556,7 +552,7 @@ local function processProjectiles(match: Match.Match, dt: number)
 				if char then
 					local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 					if root and (root.Position - nextPos).Magnitude < 2.5 then
-						local s = match.sides[match.playerSide]
+						local s = match.sides[p.target.side]
 						local defLevel = (s.heroUpgrades and s.heroUpgrades.def) or 0
 						local defMult = 1 - math.min(0.50, 0.10 * defLevel)
 						p.target.humanoid:TakeDamage(p.damage * defMult)

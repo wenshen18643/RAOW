@@ -232,7 +232,6 @@ end
 --------------------------------------------------------------------------------
 
 function MainMenu.start()
-	print("[AgeOfWarFP] MainMenu.start() running")
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "MainMenu"
 	gui.ResetOnSpawn = false
@@ -300,10 +299,8 @@ function MainMenu.start()
 
 	-- main buttons (direct children of menuRoot so input isn't blocked by an intermediate holder)
 	button(menuRoot, "PLAY", UDim2.fromScale(0.5, 0.42), UDim2.new(0.22, 0, 0.085, 0), Color3.fromRGB(50, 130, 70), function()
-		print("[AgeOfWarFP] PLAY clicked")
 		closePanels()
 		diffPanel.Visible = true
-		print(`[AgeOfWarFP] diffPanel.Visible = {diffPanel.Visible}`)
 	end)
 	button(menuRoot, "SETTINGS", UDim2.fromScale(0.5, 0.55), UDim2.new(0.22, 0, 0.07, 0), Color3.fromRGB(55, 65, 90), function()
 		closePanels()
@@ -321,7 +318,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.06, 0),
 		Size = UDim2.new(0.8, 0, 0.14, 0),
-		Text = "SELECT DIFFICULTY",
+		Text = "READY FOR 1v1",
 		ZIndex = 11,
 	})
 
@@ -335,12 +332,10 @@ function MainMenu.start()
 	end
 
 	local diffs: { { string | Color3 } } = {
-		{ "NORMAL", "Fair economy and standard enemy strength.", Color3.fromRGB(60, 140, 70), "Normal" },
-		{ "HARDER", "1.3x enemy strength, reactive AI.", Color3.fromRGB(180, 120, 40), "Harder" },
-		{ "IMPOSSIBLE", "2x enemy strength. Frame-perfect AI.", Color3.fromRGB(180, 50, 50), "Impossible" },
+		{ "READY", "Two equal player sides. The match starts when both players are ready.", Color3.fromRGB(60, 140, 70), "Normal" },
 	}
 	for i, d in diffs do
-		local y = 0.16 + i * 0.19
+		local y = 0.24 + i * 0.19
 		button(diffPanel, d[1] :: string, UDim2.fromScale(0.5, y), UDim2.new(0.6, 0, 0.13, 0), d[3] :: Color3, function()
 			play(d[4] :: string)
 		end).ZIndex = 11
@@ -460,14 +455,18 @@ function MainMenu.start()
 		TextColor3 = Color3.fromRGB(170, 170, 180),
 		ZIndex = 9,
 	})
+	button(results, "RETURN TO LOBBY", UDim2.fromScale(0.5, 0.76), UDim2.new(0.22, 0, 0.065, 0), Color3.fromRGB(55, 75, 105), function()
+		Remotes.LeaveMatch:FireServer()
+	end).ZIndex = 9
 
-	local function showResults(won: boolean, restartIn: number)
+	local function showResults(won: boolean, restartIn: number, ratingDelta: number?)
 		local dur = os.clock() - matchStartAt
 		local mins = math.floor(dur / 60)
 		local secs = math.floor(dur % 60)
 		resultTitle.Text = won and "VICTORY" or "DEFEAT"
 		resultTitle.TextColor3 = won and Color3.fromRGB(120, 230, 120) or Color3.fromRGB(230, 90, 80)
-		resultStats.Text = `Difficulty:  {lastDifficulty}\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s`
+		local ratingText = ratingDelta and `\nRating:  {ratingDelta >= 0 and "+" or ""}{ratingDelta}` or ""
+		resultStats.Text = `Mode:  1v1 PvP\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}`
 		results.Visible = true
 		task.spawn(function()
 			for t = restartIn, 1, -1 do
@@ -486,6 +485,13 @@ function MainMenu.start()
 
 	Remotes.StateUpdate.OnClientEvent:Connect(function(state)
 		if typeof(state) == "table" then
+			if state.status == "Active" and menuRoot.Visible then
+				closePanels()
+				menuRoot.Visible = false
+				menuOpen = false
+				stopOrbit()
+				GameUI.setHudVisible(true)
+			end
 			if typeof(state.ageName) == "string" then
 				lastAgeName = state.ageName
 			end
@@ -497,10 +503,15 @@ function MainMenu.start()
 
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
 		if event == "Victory" or event == "Defeat" then
-			showResults(event == "Victory", (data and data.restartIn) or 10)
+			showResults(event == "Victory", (data and data.restartIn) or 10, data and data.ratingDelta)
 		elseif event == "MatchStart" then
 			matchStartAt = os.clock()
 			results.Visible = false
+			closePanels()
+			menuRoot.Visible = false
+			menuOpen = false
+			stopOrbit()
+			GameUI.setHudVisible(true)
 		end
 	end)
 

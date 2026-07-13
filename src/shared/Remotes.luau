@@ -15,6 +15,7 @@ local NAMES = {
 	"FireWeaponSecondary", -- (origin: Vector3, direction: Vector3)
 	"BuyUpgrade", -- (stat: string)
 	"SelectDifficulty", -- (difficultyName: string)
+	"LeaveMatch", -- return to a public matchmaking lobby after a result
 	-- server -> client
 	"StateUpdate", -- (state: table) periodic HUD snapshot
 	"MatchEvent", -- (event: string, data: table?) "MatchStart"|"Victory"|"Defeat"|"AgeUp"|"SpecialFired"|"HeroRespawn"

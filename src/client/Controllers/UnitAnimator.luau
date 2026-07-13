@@ -398,7 +398,6 @@ local function watchFolder(folder: Instance)
 end
 
 function UnitAnimator.start()
-	print("[AgeOfWarFP] UnitAnimator.start() running")
 	-- the Units folder is created lazily by the server on first spawn
 	local existing = Workspace:FindFirstChild("Units")
 	if existing then
@@ -413,15 +412,10 @@ function UnitAnimator.start()
 		end)
 	end
 
-	local lastReport = 0
 	RunService.RenderStepped:Connect(function(dt)
 		local cam = Workspace.CurrentCamera
 		local camPos = cam and cam.CFrame.Position or Vector3.zero
 		local now = os.clock()
-		if now - lastReport > 3 then
-			lastReport = now
-			print(`[AgeOfWarFP] UnitAnimator tracking {#entries} units`)
-		end
 		for model, e in entries do
 			if not e.body.Parent then
 				untrack(model)

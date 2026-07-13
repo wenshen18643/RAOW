@@ -15,6 +15,7 @@ local Viewmodel = require(script.Parent.Viewmodel)
 local VFXConfig = nil -- lazy loaded after Shared is ready
 
 local FX = {}
+local localSide: string? = nil
 
 local fxRng = Random.new()
 
@@ -362,6 +363,9 @@ end
 
 function FX.start()
 	local RemotesModule = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Remotes")) :: any
+	RemotesModule.StateUpdate.OnClientEvent:Connect(function(state)
+		if typeof(state) == "table" then localSide = state.playerSide end
+	end)
 	RemotesModule.FX.OnClientEvent:Connect(function(kind: string, data: { [string]: any })
 		if kind == "Tracer" then
 			tracer(data)
@@ -391,7 +395,7 @@ function FX.start()
 	end)
 
 	RemotesModule.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
-		if event == "AgeUp" and data and data.side == "A" then
+		if event == "AgeUp" and data and data.side == localSide then
 			ageUpFlash()
 		end
 	end)
