@@ -7,6 +7,10 @@
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Leaderboard = require(script.Parent.Leaderboard)
 
 local PlayerData = {}
 
@@ -20,17 +24,23 @@ export type PlayerProfile = {
 	totalKills: number,
 	rating: number,
 	unlockedSkins: { string },
+	level: number,
+	xp: number,
+	tutorialDone: boolean,
 }
 
 -- Returns a fresh default profile.
 local function defaultProfile(): PlayerProfile
 	return {
-		schemaVersion = 2,
+		schemaVersion = 3,
 		wins = 0,
 		losses = 0,
 		totalKills = 0,
 		rating = 1000,
 		unlockedSkins = {},
+		level = 1,
+		xp = 0,
+		tutorialDone = false,
 	}
 end
 
@@ -88,6 +98,9 @@ function PlayerData.load(player: Player)
 		if result.unlockedSkins and typeof(result.unlockedSkins) == "table" then
 			profile.unlockedSkins = result.unlockedSkins
 		end
+		profile.level = math.clamp(math.floor(tonumber(result.level) or 1), 1, ProgressionConfig.MAX_LEVEL)
+		profile.xp = math.max(tonumber(result.xp) or 0, 0)
+		profile.tutorialDone = result.tutorialDone == true
 		cache[player] = profile
 	else
 		if not ok then
@@ -129,6 +142,8 @@ function PlayerData.save(player: Player): boolean
 
 	if not ok then
 		warn("[PlayerData] Failed to save profile for " .. player.Name .. ": " .. tostring(err))
+	else
+		Leaderboard.submit(player.UserId, profile.rating)
 	end
 	return ok
 end
@@ -161,6 +176,52 @@ function PlayerData.addKills(player: Player, count: number)
 		profile.totalKills += count
 	end
 end
+
+-- Add XP and handle level ups
+function PlayerData.addXp(player: Player, amount: number): {oldXp: number, newXp: number, levelups: number, unlocks: {string}}
+	local profile = cache[player]
+	if not profile then return {oldXp = 0, newXp = 0, levelups = 0, unlocks = {}} end
+	
+	local oldXp = profile.xp
+	local newXp = profile.xp + amount
+	profile.xp = newXp
+	
+	local levelups = 0
+	local unlocks = {}
+	
+	while profile.level < ProgressionConfig.MAX_LEVEL do
+		local req = ProgressionConfig.xpForLevel(profile.level + 1)
+		if newXp >= req then
+			profile.level += 1
+			levelups += 1
+			local reward = ProgressionConfig.Ladder[profile.level]
+			if reward then
+				table.insert(unlocks, reward.name)
+				if reward.type == "Skin" and not table.find(profile.unlockedSkins, reward.id) then
+					table.insert(profile.unlockedSkins, reward.id)
+				end
+			end
+		else
+			break
+		end
+	end
+	
+	return {oldXp = oldXp, newXp = newXp, levelups = levelups, unlocks = unlocks}
+end
+
+-- Sync profile to client
+function PlayerData.sync(player: Player)
+	local profile = cache[player]
+	if profile then
+		Remotes.ProfileSync:FireClient(player, profile)
+	end
+end
+
+-- Clients request a sync once their listener is connected; the join-time sync
+-- can fire before the client script is ready and be dropped.
+Remotes.RequestProfile.OnServerEvent:Connect(function(player)
+	PlayerData.sync(player)
+end)
 
 -- Saves and removes a profile. The match owner calls this after recording any
 -- forfeit so result persistence cannot race a separate PlayerRemoving handler.

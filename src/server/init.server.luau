@@ -8,6 +8,7 @@ local TeleportService = game:GetService("TeleportService")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local DifficultyConfig = require(ReplicatedStorage.Shared.Config.DifficultyConfig)
+local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Services = script.Services
@@ -118,14 +119,54 @@ local function wireMatch(match: Match.Match)
 		if matchMode == "PvE" then
 			local player = sidePlayers["A"]
 			if player then
+				local xpResult
+				local tutorialComplete = false
 				if winner == "A" then
 					PlayerData.recordWin(player)
+					xpResult = PlayerData.addXp(player, ProgressionConfig.XP_WIN)
 					Telemetry.event(player, "pve_match_won", os.clock() - match.startedAt)
+
+					local profile = PlayerData.get(player)
+					if not profile.tutorialDone then
+						local tutXpResult = PlayerData.addXp(player, ProgressionConfig.XP_TUTORIAL)
+						local combinedUnlocks = {}
+						for _, unlock in ipairs(xpResult.unlocks) do
+							table.insert(combinedUnlocks, unlock)
+						end
+						for _, unlock in ipairs(tutXpResult.unlocks) do
+							table.insert(combinedUnlocks, unlock)
+						end
+						xpResult = {
+							oldXp = xpResult.oldXp,
+							newXp = tutXpResult.newXp,
+							levelups = xpResult.levelups + tutXpResult.levelups,
+							unlocks = combinedUnlocks,
+						}
+						profile.tutorialDone = true
+						tutorialComplete = true
+					end
 				else
 					PlayerData.recordLoss(player)
+					xpResult = PlayerData.addXp(player, ProgressionConfig.XP_LOSS)
 					Telemetry.event(player, "pve_match_lost", os.clock() - match.startedAt)
 				end
-				Remotes.MatchEvent:FireClient(player, winner == "A" and "Victory" or "Defeat", { restartIn = RESTART_DELAY })
+				PlayerData.sync(player)
+
+				if winner == "A" then
+					local victoryPayload: { restartIn: number, xpData: any, tutorialComplete: boolean? } = {
+						restartIn = RESTART_DELAY,
+						xpData = xpResult,
+					}
+					if tutorialComplete then
+						victoryPayload.tutorialComplete = true
+					end
+					Remotes.MatchEvent:FireClient(player, "Victory", victoryPayload)
+				else
+					Remotes.MatchEvent:FireClient(player, "Defeat", {
+						restartIn = RESTART_DELAY,
+						xpData = xpResult,
+					})
+				end
 			end
 			task.delay(RESTART_DELAY, function()
 				-- In a lobby server the player never left; just clear the match and reopen the menu.
@@ -144,14 +185,24 @@ local function wireMatch(match: Match.Match)
 			elseif winnerPlayer then
 				PlayerData.recordWin(winnerPlayer)
 			end
-			Telemetry.event(winnerPlayer, "pvp_match_won", os.clock() - match.startedAt, { matchId = expectedMatchId or "studio" })
-			Telemetry.event(loserPlayer, "pvp_match_lost", os.clock() - match.startedAt, { matchId = expectedMatchId or "studio" })
+			local winnerXp, loserXp = nil, nil
+			if winnerPlayer then
+				winnerXp = PlayerData.addXp(winnerPlayer, ProgressionConfig.XP_WIN)
+				PlayerData.sync(winnerPlayer)
+				Telemetry.event(winnerPlayer, "pvp_match_won", os.clock() - match.startedAt, { matchId = expectedMatchId or "studio" })
+			end
+			if loserPlayer then
+				loserXp = PlayerData.addXp(loserPlayer, ProgressionConfig.XP_LOSS)
+				PlayerData.sync(loserPlayer)
+				Telemetry.event(loserPlayer, "pvp_match_lost", os.clock() - match.startedAt, { matchId = expectedMatchId or "studio" })
+			end
 			for side, player in sidePlayers do
 				if player then
 					local won = side == winner
 					Remotes.MatchEvent:FireClient(player, won and "Victory" or "Defeat", {
 						restartIn = RESTART_DELAY,
 						ratingDelta = won and winnerDelta or loserDelta,
+						xpData = won and winnerXp or loserXp,
 					})
 				end
 			end
@@ -241,6 +292,7 @@ local function initPvPReservedServer()
 
 	Players.PlayerAdded:Connect(function(player)
 		PlayerData.load(player)
+		PlayerData.sync(player)
 		local side: string? = nil
 		local joinData = player:GetJoinData()
 		local teleportData = joinData.TeleportData
@@ -427,6 +479,7 @@ if isLobby or isStudio then
 
 	Players.PlayerAdded:Connect(function(player)
 		PlayerData.load(player)
+		PlayerData.sync(player)
 		-- Lobby players wait in menu; character loads when a mode is selected.
 	end)
 

@@ -621,6 +621,16 @@ function GameUI.setHudVisible(visible: boolean)
 	gui.Enabled = visible
 end
 
+-- Expose HUD elements so the tutorial can point at them.
+function GameUI.getSlotButton(i: number): TextButton?
+	local slot = slots[i]
+	return slot and slot.btn or nil
+end
+
+function GameUI.getEvolveButton(): TextButton
+	return evolveBtn
+end
+
 local lastHitmarker = 0
 function GameUI.showHitmarker()
 	lastHitmarker = os.clock()

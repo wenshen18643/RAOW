@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
+local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Audio = require(script.Parent.Audio)
 local GameUI = require(script.Parent.GameUI)
@@ -33,6 +34,22 @@ local matchStartAt = os.clock()
 local lastAgeName = "Stone Age"
 local lastDifficulty = "Normal"
 local lastMode = "PvE"
+local currentLevel = 1
+
+-- Returns "reward name (Lv N)" for the next ladder reward above `level`, or nil at the top.
+local function nextUnlockText(level: number): string?
+	local bestLevel: number? = nil
+	for lvl in ProgressionConfig.Ladder do
+		if lvl > level and (bestLevel == nil or lvl < bestLevel) then
+			bestLevel = lvl
+		end
+	end
+	if bestLevel then
+		local reward = ProgressionConfig.Ladder[bestLevel]
+		return `{reward.name}  (Lv {bestLevel})`
+	end
+	return nil
+end
 
 --------------------------------------------------------------------------------
 -- widget helpers
@@ -287,17 +304,59 @@ function MainMenu.start()
 		TextColor3 = Color3.fromRGB(190, 190, 200),
 	})
 
+	-- profile block
+	local profileBlock = Instance.new("Frame")
+	profileBlock.AnchorPoint = Vector2.new(1, 0)
+	profileBlock.Position = UDim2.new(0.98, 0, 0.03, 0)
+	profileBlock.Size = UDim2.new(0.2, 0, 0.08, 0)
+	profileBlock.BackgroundTransparency = 1
+	profileBlock.Parent = menuRoot
+	
+	local levelLabel = label(profileBlock, {
+		Position = UDim2.new(0, 0, 0, 0),
+		Size = UDim2.new(1, 0, 0.4, 0),
+		Text = "LEVEL 1",
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextColor3 = GOLD,
+	})
+	
+	local xpTrack = Instance.new("Frame")
+	xpTrack.Position = UDim2.new(0.1, 0, 0.5, 0)
+	xpTrack.Size = UDim2.new(0.9, 0, 0.15, 0)
+	xpTrack.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	xpTrack.BorderSizePixel = 0
+	xpTrack.Parent = profileBlock
+	corner(xpTrack, 4)
+	
+	local xpFill = Instance.new("Frame")
+	xpFill.Size = UDim2.new(0, 0, 1, 0)
+	xpFill.BackgroundColor3 = Color3.fromRGB(120, 200, 255)
+	xpFill.BorderSizePixel = 0
+	xpFill.Parent = xpTrack
+	corner(xpFill, 4)
+
+	-- next-unlock preview under the XP bar (the roadmap that pulls players back)
+	local nextUnlockLabel = label(profileBlock, {
+		Position = UDim2.new(0, 0, 0.72, 0),
+		Size = UDim2.new(1, 0, 0.28, 0),
+		Text = "",
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextColor3 = Color3.fromRGB(190, 190, 200),
+	})
+
 	-- panels
 	local modePanel = panel(gui, UDim2.new(0.46, 0, 0.5, 0))
 	local diffPanel = panel(gui, UDim2.new(0.46, 0, 0.58, 0))
 	local settingsPanel = panel(gui, UDim2.new(0.46, 0, 0.62, 0))
 	local helpPanel = panel(gui, UDim2.new(0.5, 0, 0.66, 0))
+	local boardPanel = panel(gui, UDim2.new(0.38, 0, 0.62, 0))
 
 	local function closePanels()
 		modePanel.Visible = false
 		diffPanel.Visible = false
 		settingsPanel.Visible = false
 		helpPanel.Visible = false
+		boardPanel.Visible = false
 	end
 
 	-- main buttons (direct children of menuRoot so input isn't blocked by an intermediate holder)
@@ -312,6 +371,22 @@ function MainMenu.start()
 	button(menuRoot, "HOW TO PLAY", UDim2.fromScale(0.5, 0.665), UDim2.new(0.22, 0, 0.07, 0), Color3.fromRGB(55, 65, 90), function()
 		closePanels()
 		helpPanel.Visible = true
+	end)
+
+	-- left rail: secondary destinations (leaderboard, shop placeholder)
+	button(menuRoot, "LEADERBOARD", UDim2.fromScale(0.09, 0.42), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(55, 65, 90), function()
+		closePanels()
+		boardPanel.Visible = true
+		Remotes.RequestLeaderboard:FireServer()
+	end)
+	local shopBtn: TextButton? = nil
+	shopBtn = button(menuRoot, "SHOP", UDim2.fromScale(0.09, 0.51), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(60, 60, 70), function()
+		if shopBtn then
+			shopBtn.Text = "COMING SOON"
+			task.delay(1.2, function()
+				if shopBtn then shopBtn.Text = "SHOP" end
+			end)
+		end
 	end)
 
 	--------------------------------------------------------------------------------
@@ -398,6 +473,55 @@ function MainMenu.start()
 	button(diffPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.08, 0), Color3.fromRGB(60, 60, 70), function()
 		closePanels()
 		modePanel.Visible = true
+	end).ZIndex = 11
+
+	--------------------------------------------------------------------------------
+	-- first-battle signpost (new players only): straight into a guided PvE match
+	--------------------------------------------------------------------------------
+	local firstBattleBtn = button(menuRoot, "FIRST BATTLE  —  EARN 300 XP", UDim2.fromScale(0.5, 0.325), UDim2.new(0.26, 0, 0.06, 0), Color3.fromRGB(170, 130, 30), function()
+		startPve("Normal")
+	end)
+	firstBattleBtn.Visible = false
+	local fbStroke = Instance.new("UIStroke")
+	fbStroke.Color = GOLD
+	fbStroke.Thickness = 2
+	fbStroke.Parent = firstBattleBtn
+	task.spawn(function()
+		-- gentle pulse to draw the eye without blocking anything
+		while firstBattleBtn.Parent do
+			if firstBattleBtn.Visible then
+				TweenService:Create(fbStroke, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Transparency = 0.7 }):Play()
+				task.wait(0.8)
+				TweenService:Create(fbStroke, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Transparency = 0 }):Play()
+			end
+			task.wait(0.85)
+		end
+	end)
+
+	--------------------------------------------------------------------------------
+	-- leaderboard panel
+	--------------------------------------------------------------------------------
+	label(boardPanel, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.05, 0),
+		Size = UDim2.new(0.8, 0, 0.1, 0),
+		Text = "TOP RATINGS",
+		ZIndex = 11,
+	})
+	local boardRows = label(boardPanel, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.18, 0),
+		Size = UDim2.new(0.84, 0, 0.66, 0),
+		Text = "Loading...",
+		TextScaled = false,
+		TextSize = 20,
+		TextWrapped = true,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextColor3 = Color3.fromRGB(210, 210, 220),
+		ZIndex = 11,
+	})
+	button(boardPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
+		boardPanel.Visible = false
 	end).ZIndex = 11
 
 	--------------------------------------------------------------------------------
@@ -507,7 +631,7 @@ function MainMenu.start()
 		Remotes.LeaveMatch:FireServer()
 	end).ZIndex = 9
 
-	local function showResults(won: boolean, restartIn: number, ratingDelta: number?)
+	local function showResults(won: boolean, restartIn: number, ratingDelta: number?, xpData: any)
 		local dur = os.clock() - matchStartAt
 		local mins = math.floor(dur / 60)
 		local secs = math.floor(dur % 60)
@@ -515,7 +639,23 @@ function MainMenu.start()
 		resultTitle.TextColor3 = won and Color3.fromRGB(120, 230, 120) or Color3.fromRGB(230, 90, 80)
 		local ratingText = ratingDelta and `\nRating:  {ratingDelta >= 0 and "+" or ""}{ratingDelta}` or ""
 		local modeText = lastMode == "PvP" and "1v1 PvP" or `PvE • {lastDifficulty:upper()}`
-		resultStats.Text = `Mode:  {modeText}\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}`
+		
+		local xpText = ""
+		if xpData then
+			xpText = `\nXP Earned:  +{xpData.newXp - xpData.oldXp}`
+			if xpData.levelups > 0 then
+				xpText ..= `\nLevel Up! (+{xpData.levelups})`
+			end
+			if xpData.unlocks and #xpData.unlocks > 0 then
+				xpText ..= `\nUnlocked: {table.concat(xpData.unlocks, ", ")}`
+			end
+			local unlock = nextUnlockText(currentLevel)
+			if unlock then
+				xpText ..= `\nNext unlock: {unlock}`
+			end
+		end
+		
+		resultStats.Text = `Mode:  {modeText}\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}{xpText}`
 		results.Visible = true
 		task.spawn(function()
 			for t = restartIn, 1, -1 do
@@ -531,6 +671,41 @@ function MainMenu.start()
 	--------------------------------------------------------------------------------
 	-- wiring
 	--------------------------------------------------------------------------------
+	
+	Remotes.ProfileSync.OnClientEvent:Connect(function(profile)
+		if typeof(profile) == "table" and typeof(profile.level) == "number" and typeof(profile.xp) == "number" then
+			currentLevel = profile.level
+			levelLabel.Text = `LEVEL {profile.level}`
+			local nextXp = ProgressionConfig.xpForLevel(profile.level + 1)
+			local prevXp = ProgressionConfig.xpForLevel(profile.level)
+			local progress = 0
+			if nextXp > prevXp then
+				progress = math.clamp((profile.xp - prevXp) / (nextXp - prevXp), 0, 1)
+			end
+			if profile.level >= ProgressionConfig.MAX_LEVEL then progress = 1 end
+			xpFill.Size = UDim2.fromScale(progress, 1)
+			local unlock = nextUnlockText(profile.level)
+			nextUnlockLabel.Text = unlock and `Next: {unlock}` or "All rewards unlocked"
+			firstBattleBtn.Visible = profile.tutorialDone ~= true
+		end
+	end)
+
+	Remotes.LeaderboardData.OnClientEvent:Connect(function(rows)
+		if typeof(rows) ~= "table" then return end
+		if #rows == 0 then
+			boardRows.Text = "No ratings yet. Win a PvP match to get on the board!"
+			return
+		end
+		local lines = {}
+		for i, row in rows do
+			if typeof(row) == "table" and typeof(row.name) == "string" and typeof(row.rating) == "number" then
+				table.insert(lines, `{i}.  {row.name}  —  {row.rating}`)
+			end
+		end
+		boardRows.Text = table.concat(lines, "\n")
+	end)
+	-- The join-time sync can fire before this listener exists; ask for it again.
+	Remotes.RequestProfile:FireServer()
 
 	Remotes.StateUpdate.OnClientEvent:Connect(function(state)
 		if typeof(state) == "table" then
@@ -555,7 +730,7 @@ function MainMenu.start()
 
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
 		if event == "Victory" or event == "Defeat" then
-			showResults(event == "Victory", (data and data.restartIn) or 10, data and data.ratingDelta)
+			showResults(event == "Victory", (data and data.restartIn) or 10, data and data.ratingDelta, data and data.xpData)
 		elseif event == "MatchStart" then
 			matchStartAt = os.clock()
 			results.Visible = false

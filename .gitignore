@@ -4,3 +4,4 @@
 *.rbxl.lock
 sourcemap.json
 build/
+.mcp.json
