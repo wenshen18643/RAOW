@@ -120,6 +120,7 @@ objectiveFrame.Size = UDim2.new(0.48, 0, 0.07, 0)
 objectiveFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
 objectiveFrame.BackgroundTransparency = 0.16
 objectiveFrame.BorderSizePixel = 0
+objectiveFrame.Visible = false -- shown for 10s at match start
 objectiveFrame.Parent = gui
 local objectiveCorner = Instance.new("UICorner")
 objectiveCorner.CornerRadius = UDim.new(0, 8)
@@ -132,6 +133,18 @@ local evolveHint = label(objectiveFrame, {
 	Position = UDim2.fromScale(0.02, 0.47), Size = UDim2.fromScale(0.96, 0.42),
 	Text = "Kills grant XP • Evolve to unlock stronger armies", TextColor3 = Color3.fromRGB(205, 205, 220), ZIndex = 3,
 })
+
+-- Show the goal banner for 10 seconds, then hide it.
+local objectiveShownAt = 0
+local function showObjective()
+	objectiveShownAt = os.clock()
+	objectiveFrame.Visible = true
+	task.delay(10, function()
+		if os.clock() - objectiveShownAt >= 10 then
+			objectiveFrame.Visible = false
+		end
+	end)
+end
 
 -- Difficulty Label (top right)
 local diffLabel = label(gui, {
@@ -632,6 +645,7 @@ function GameUI.start()
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
 		-- Victory/Defeat are handled by the MainMenu results screen
 		if event == "MatchStart" then
+			showObjective()
 			local diffText = (data and data.difficulty) and data.difficulty:upper() or "NORMAL"
 			showMessage(`BATTLE START — {diffText} MODE`, Color3.new(1, 1, 1), 3)
 			task.delay(3.2, function()

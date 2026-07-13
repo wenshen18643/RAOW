@@ -5,7 +5,7 @@ local GameConfig = {
 	-- Economy
 	STARTING_GOLD = 175,
 	HERO_KILL_BONUS_MULT = 1.5, -- extra reward when hero lands the kill
-	PASSIVE_INCOME_BY_AGE = { 4, 7, 12, 20, 32 }, -- gold per second
+	PASSIVE_INCOME_BY_AGE = { 2, 3.5, 6, 10, 16 }, -- gold per second
 	COMEBACK_INCOME_MAX = 4, -- extra gold/sec when your base is behind
 	ESCALATION_START = 15 * 60,
 	SUDDEN_DEATH_START = 20 * 60,
@@ -14,8 +14,7 @@ local GameConfig = {
 
 	-- Units
 	UNIT_CAP = 20, -- alive per side
-	QUEUE_CAP = 10,
-	SPAWN_INTERVAL = 1.2, -- seconds between queue pops
+	QUEUE_CAP = 10, -- per-unit train times live in Units.luau (trainTime)
 
 	-- Base
 	BASE_MAX_HP = 750,

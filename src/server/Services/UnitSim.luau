@@ -253,6 +253,9 @@ function UnitSim.requestSpawn(match: Match.Match, side: string, unitId: string, 
 		end
 		s.gold -= def.cost
 	end
+	if #s.queue == 0 then
+		s.lastSpawnAt = os.clock() -- training starts now; unit spawns after its trainTime
+	end
 	table.insert(s.queue, unitId)
 	return true
 end
@@ -261,18 +264,20 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	if #s.queue == 0 or #s.units >= GameConfig.UNIT_CAP then
 		return
 	end
-	if now - s.lastSpawnAt < GameConfig.SPAWN_INTERVAL then
+	-- Each unit trains for its own duration: (trainTime) --> unit --> (trainTime) --> unit ...
+	local frontDef = Units.byId[s.queue[1]]
+	if now - s.lastSpawnAt < frontDef.trainTime then
 		return
 	end
 	s.lastSpawnAt = now
 	local unitId = table.remove(s.queue, 1) :: string
 	local def = Units.byId[unitId]
 	local spawnCf = match.map.bases[s.side].unitSpawn
-	-- Stable formation lanes prevent units from spawning into a noisy clump.
-	local formationSlots = { 0, -7, 7, -14, 14, -21, 21 }
+	-- Single-file queue formation: each unit spawns behind the previous one.
+	local formationSlots = { 0, 5, 10, 15, 20, 25, 30 }
 	local formationIndex = (#s.units % #formationSlots) + 1
-	local zOff = formationSlots[formationIndex]
-	spawnCf = spawnCf * CFrame.new(zOff, 0, 0) -- spawn cf faces lane; x is sideways after rotation
+	local backOff = formationSlots[formationIndex]
+	spawnCf = spawnCf * CFrame.new(0, 0, backOff) -- spawn cf faces lane; +z is behind
 	local model, body = buildUnitModel(def, s.side, spawnCf)
 
 	-- Apply difficulty scaling for enemy (side B) units
