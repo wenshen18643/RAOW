@@ -47,8 +47,8 @@ function PvELevels.difficultyForLevel(level: number): DifficultyDef
 	end
 
 	return {
-		hpMult = 1 + 0.1 * (level - 1),
-		damageMult = 1 + 0.1 * (level - 1),
+		hpMult = level <= 10 and (1 + 0.1 * (level - 1)) or (1.9 * 1.08 ^ (level - 10)),
+		damageMult = level <= 10 and (1 + 0.1 * (level - 1)) or (1.9 * 1.08 ^ (level - 10)),
 		aiTickRate = lerp(NORMAL.aiTickRate, IMPOSSIBLE.aiTickRate, t),
 		aiSpecialThreshold = math.floor(lerp(NORMAL.aiSpecialThreshold, IMPOSSIBLE.aiSpecialThreshold, t)),
 		aiSpawnInterval = lerp(NORMAL.aiSpawnInterval, IMPOSSIBLE.aiSpawnInterval, t),
@@ -56,7 +56,7 @@ function PvELevels.difficultyForLevel(level: number): DifficultyDef
 		aiTurretInterval = lerp(NORMAL.aiTurretInterval, IMPOSSIBLE.aiTurretInterval, t),
 		aiCounterSpawn = level >= 6,
 		-- Economy/production pressure keeps growing past level 20 alongside stats.
-		aiIncomeMult = 1 + 0.05 * (level - 1),
+		aiIncomeMult = math.min(1.04 ^ (level - 1), 8),
 		aiTrainSpeedMult = math.min(1 + 0.04 * (level - 1), 2.5),
 	}
 end
@@ -80,13 +80,13 @@ PvELevels.PVP_WIN_COINS = 100
 PvELevels.PVP_LOSS_COINS = 25
 
 PvELevels.UPGRADE_TRACKS = {
-	unitHp = { name = "Unit HP (+3%)" },
-	unitDamage = { name = "Unit Damage (+3%)" },
+	unitHp = { name = "Unit HP (+3%/tier)" },
+	unitDamage = { name = "Unit Damage (+3%/tier)" },
 	startingGold = { name = "Starting Gold (+50)" },
 } :: { [string]: { name: string } }
 
 function PvELevels.upgradeCost(tier: number): number
-	return math.floor(100 * 1.5 ^ (tier - 1))
+	return math.floor(100 * 1.35 ^ (tier - 1))
 end
 
 PvELevels.PERKS = {

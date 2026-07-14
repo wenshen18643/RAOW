@@ -266,6 +266,14 @@ function Match.tryEvolve(match: Match, side: string, bypassXp: boolean?): boolea
 	local TurretSystem = require(script.Parent.TurretSystem)
 	TurretSystem.remountTurrets(match, side)
 	
+	if (match.mode == "PvE" or match.mode == "PvE-Levels") and side == "B" then
+		local mDef = Units.byId[`age{s.age}_melee`]
+		local rDef = Units.byId[`age{s.age}_ranged`]
+		if mDef and rDef then
+			s.gold += 2 * (mDef.cost + rDef.cost)
+		end
+	end
+
 	if match.onAgeUp then
 		match.onAgeUp(side, s.age)
 	end

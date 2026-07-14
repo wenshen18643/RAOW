@@ -308,8 +308,8 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	
 	if match.mode == "PvE-Levels" and s.side == "A" then
 		if s.pveUpgrades then
-			scaledHp = math.floor(scaledHp * (1 + 0.03 * (s.pveUpgrades.unitHp or 0)))
-			scaledDamage = math.floor(scaledDamage * (1 + 0.03 * (s.pveUpgrades.unitDamage or 0)))
+			scaledHp = math.floor(scaledHp * (1.03 ^ (s.pveUpgrades.unitHp or 0)))
+			scaledDamage = math.floor(scaledDamage * (1.03 ^ (s.pveUpgrades.unitDamage or 0)))
 		end
 	end
 

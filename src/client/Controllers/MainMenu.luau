@@ -383,11 +383,13 @@ function MainMenu.start()
 		helpPanel.Visible = true
 	end)
 
+	local currentBoardType = "pvp"
+
 	-- left rail: secondary destinations (leaderboard, shop placeholder)
 	button(menuRoot, "LEADERBOARD", UDim2.fromScale(0.09, 0.42), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(55, 65, 90), function()
 		closePanels()
 		boardPanel.Visible = true
-		Remotes.RequestLeaderboard:FireServer()
+		Remotes.RequestLeaderboard:FireServer(currentBoardType == "pve" and "pve" or nil)
 	end)
 	
 	-- Refresh upgrades panel UI when opened
@@ -733,15 +735,16 @@ function MainMenu.start()
 	--------------------------------------------------------------------------------
 	label(boardPanel, {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.05, 0),
-		Size = UDim2.new(0.8, 0, 0.1, 0),
-		Text = "TOP RATINGS",
+		Position = UDim2.new(0.5, 0, 0.04, 0),
+		Size = UDim2.new(0.8, 0, 0.06, 0),
+		Text = "LEADERBOARD",
 		ZIndex = 11,
 	})
+	
 	local boardRows = label(boardPanel, {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.18, 0),
-		Size = UDim2.new(0.84, 0, 0.66, 0),
+		Position = UDim2.new(0.5, 0, 0.22, 0),
+		Size = UDim2.new(0.84, 0, 0.62, 0),
 		Text = "Loading...",
 		TextScaled = false,
 		TextSize = 20,
@@ -750,6 +753,20 @@ function MainMenu.start()
 		TextColor3 = Color3.fromRGB(210, 210, 220),
 		ZIndex = 11,
 	})
+	
+	local pvpTab = button(boardPanel, "PVP RATING", UDim2.new(0.3, 0, 0.14, 0), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(80, 120, 180), function()
+		currentBoardType = "pvp"
+		boardRows.Text = "Loading..."
+		Remotes.RequestLeaderboard:FireServer(nil)
+	end)
+	pvpTab.ZIndex = 11
+	
+	local pveTab = button(boardPanel, "PVE LEVELS", UDim2.new(0.7, 0, 0.14, 0), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(150, 90, 40), function()
+		currentBoardType = "pve"
+		boardRows.Text = "Loading..."
+		Remotes.RequestLeaderboard:FireServer("pve")
+	end)
+	pveTab.ZIndex = 11
 	button(boardPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
 		boardPanel.Visible = false
 	end).ZIndex = 11
@@ -933,15 +950,25 @@ function MainMenu.start()
 
 	Remotes.LeaderboardData.OnClientEvent:Connect(function(boardType, rows)
 		if typeof(rows) ~= "table" then return end
-		if boardType ~= "pvp" then return end -- this panel shows the rating board only
+		if boardType ~= currentBoardType then return end
+		
 		if #rows == 0 then
-			boardRows.Text = "No ratings yet. Win a PvP match to get on the board!"
+			if boardType == "pvp" then
+				boardRows.Text = "No ratings yet. Win a PvP match to get on the board!"
+			else
+				boardRows.Text = "No levels cleared yet. Beat PvE Level 1 to get on the board!"
+			end
 			return
 		end
+		
 		local lines = {}
 		for i, row in rows do
 			if typeof(row) == "table" and typeof(row.name) == "string" and typeof(row.rating) == "number" then
-				table.insert(lines, `{i}.  {row.name}  —  {row.rating}`)
+				if boardType == "pvp" then
+					table.insert(lines, `{i}.  {row.name}  —  {row.rating}`)
+				else
+					table.insert(lines, `{i}.  {row.name}  —  Lv {row.rating}`)
+				end
 			end
 		end
 		boardRows.Text = table.concat(lines, "\n")

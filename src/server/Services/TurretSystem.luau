@@ -2,6 +2,7 @@
 -- Base turrets: buy/sell on mounts, auto-fire at nearest enemy in range.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Turrets = require(ReplicatedStorage.Shared.Config.Turrets)
@@ -118,31 +119,75 @@ local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRec
 			end
 		end
 	end
-	if not best then
+
+	local targetPos = nil
+	local targetHum = nil
+	local targetIsHero = false
+	
+	for _, p in Players:GetPlayers() do
+		if p:GetAttribute("Side") == enemySide and p.Character then
+			local hrp = p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local hum = p.Character:FindFirstChild("Humanoid") :: Humanoid?
+			if hrp and hum and hum.Health > 0 then
+				local d = (hrp.Position - muzzlePos).Magnitude
+				if d < bestDist then
+					local hasLOS = true
+					if mapFolder then
+						local res = workspace:Raycast(muzzlePos, hrp.Position - muzzlePos, params)
+						if res and res.Instance.Name == "Rock" then
+							hasLOS = false
+						end
+					end
+					
+					if hasLOS then
+						bestDist = d
+						best = nil
+						targetPos = hrp.Position
+						targetHum = hum
+						targetIsHero = true
+					end
+				end
+			end
+		end
+	end
+
+	if not best and not targetIsHero then
 		return
 	end
-	local target = best :: Match.UnitRecord
+	
 	rec.nextFireAt = now + rec.def.attackSpeed
 
+	local aimPos = targetIsHero and (targetPos :: Vector3) or (best :: Match.UnitRecord).body.Position
+	
 	-- rotate turret head toward target
 	local head = rec.model.PrimaryPart
-	if head then
-		local look = Vector3.new(target.body.Position.X, head.Position.Y, target.body.Position.Z)
+	if head and aimPos then
+		local look = Vector3.new(aimPos.X, head.Position.Y, aimPos.Z)
 		head.CFrame = CFrame.lookAt(head.Position, look)
 		rec.muzzle.CFrame = head.CFrame * CFrame.new(0, 0, -2)
 	end
 
 	Remotes.FX:FireAllClients("Tracer", {
 		from = rec.muzzle.Position,
-		to = target.body.Position,
+		to = aimPos,
 		color = Color3.fromRGB(255, 220, 120),
 	})
-	UnitSim.damageUnit(match, target, rec.def.damage, side, false)
-	Remotes.FX:FireAllClients("Damage", {
-		pos = target.body.Position,
-		amount = rec.def.damage,
-		hero = false,
-	})
+	
+	if targetIsHero and targetHum then
+		targetHum:TakeDamage(rec.def.damage)
+		Remotes.FX:FireAllClients("Damage", {
+			pos = aimPos,
+			amount = rec.def.damage,
+			hero = true,
+		})
+	elseif best then
+		UnitSim.damageUnit(match, best, rec.def.damage, side, false)
+		Remotes.FX:FireAllClients("Damage", {
+			pos = best.body.Position,
+			amount = rec.def.damage,
+			hero = false,
+		})
+	end
 end
 
 function TurretSystem.tick(match: Match.Match)
