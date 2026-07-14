@@ -528,7 +528,13 @@ local function refresh(state: { [string]: any })
 	end
 
 	if state.difficulty then
-		diffLabel.Text = state.opponentName and `VS {state.opponentName}` or "Mode: 1v1 PvP"
+		if state.mode == "PvE-Levels" then
+			diffLabel.Text = `PvE Level {state.pveLevel or 1}`
+		elseif state.opponentName then
+			diffLabel.Text = `VS {state.opponentName}`
+		else
+			diffLabel.Text = "Mode: 1v1 PvP"
+		end
 		local colors = { Normal = Color3.fromRGB(150, 200, 150), Harder = Color3.fromRGB(200, 180, 120), Impossible = Color3.fromRGB(220, 120, 120) }
 		diffLabel.TextColor3 = colors[state.difficulty] or Color3.new(1, 1, 1)
 	end
@@ -606,10 +612,15 @@ end
 
 local function setQueueMode(enabled: boolean)
 	for _, widget in {
-		cross, myBaseBg, enBaseBg, ageLabel, xpBg, objectiveFrame, diffLabel,
+		cross, myBaseBg, enBaseBg, ageLabel, xpBg, diffLabel,
 		goldFrame, upgradesToggle, countLabel, hotbar, guideButton,
 	} do
 		widget.Visible = not enabled
+	end
+	-- The goal banner is only shown by showObjective() (10s at match start),
+	-- never force-shown here; queue mode still hides it.
+	if enabled then
+		objectiveFrame.Visible = false
 	end
 	upgradesPanel.Visible = false
 	guidePanel.Visible = false
@@ -668,6 +679,7 @@ function GameUI.start()
 		-- Victory/Defeat are handled by the MainMenu results screen
 		if event == "MatchStart" then
 			setQueueMode(false)
+			showObjective()
 			local mode = data and data.mode
 			if mode == "PvP" then
 				showMessage("1v1 BATTLE START", Color3.new(1, 1, 1), 10)

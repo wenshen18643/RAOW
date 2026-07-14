@@ -18,11 +18,13 @@ local NAMES = {
 	"SelectMode", -- (mode: "pve" | "pvp", difficultyName: string?)
 	"LeaveMatch", -- return to a public matchmaking lobby after a result
 	"RequestProfile", -- () client asks for a ProfileSync once its listener is ready
-	"RequestLeaderboard", -- () client asks for the current top-rating board
+	"RequestLeaderboard", -- (boardType: string?) client asks for the current top-rating board
+	"StartPveLevel", -- (level: number) client requests level N
+	"BuyPveUpgrade", -- (trackOrPerkId: string)
 	-- server -> client
 	"StateUpdate", -- (state: table) periodic HUD snapshot
 	"ProfileSync", -- (profile: table) latest PlayerProfile data
-	"LeaderboardData", -- (rows: {{name: string, rating: number}}) top-rating board
+	"LeaderboardData", -- (boardType: string, rows: {{name: string, rating: number}}) top-rating board
 	"MatchEvent", -- (event: string, data: table?) "MatchStart"|"Victory"|"Defeat"|"AgeUp"|"SpecialFired"|"HeroRespawn"
 	"FX", -- (kind: string, data: table) visual effects broadcast
 	"DifficultySelected", -- (difficultyName: string) broadcasts chosen difficulty

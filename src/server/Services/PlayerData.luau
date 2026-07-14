@@ -27,12 +27,16 @@ export type PlayerProfile = {
 	level: number,
 	xp: number,
 	tutorialDone: boolean,
+	coins: number,
+	pveLevel: number,
+	pveUpgrades: { unitHp: number, unitDamage: number, startingGold: number },
+	pvePerks: { string },
 }
 
 -- Returns a fresh default profile.
 local function defaultProfile(): PlayerProfile
 	return {
-		schemaVersion = 3,
+		schemaVersion = 4,
 		wins = 0,
 		losses = 0,
 		totalKills = 0,
@@ -41,6 +45,10 @@ local function defaultProfile(): PlayerProfile
 		level = 1,
 		xp = 0,
 		tutorialDone = false,
+		coins = 0,
+		pveLevel = 0,
+		pveUpgrades = { unitHp = 0, unitDamage = 0, startingGold = 0 },
+		pvePerks = {},
 	}
 end
 
@@ -101,6 +109,16 @@ function PlayerData.load(player: Player)
 		profile.level = math.clamp(math.floor(tonumber(result.level) or 1), 1, ProgressionConfig.MAX_LEVEL)
 		profile.xp = math.max(tonumber(result.xp) or 0, 0)
 		profile.tutorialDone = result.tutorialDone == true
+		profile.coins = math.max(tonumber(result.coins) or 0, 0)
+		profile.pveLevel = math.max(math.floor(tonumber(result.pveLevel) or 0), 0)
+		if result.pveUpgrades and typeof(result.pveUpgrades) == "table" then
+			profile.pveUpgrades.unitHp = result.pveUpgrades.unitHp or 0
+			profile.pveUpgrades.unitDamage = result.pveUpgrades.unitDamage or 0
+			profile.pveUpgrades.startingGold = result.pveUpgrades.startingGold or 0
+		end
+		if result.pvePerks and typeof(result.pvePerks) == "table" then
+			profile.pvePerks = result.pvePerks
+		end
 		cache[player] = profile
 	else
 		if not ok then
@@ -144,6 +162,9 @@ function PlayerData.save(player: Player): boolean
 		warn("[PlayerData] Failed to save profile for " .. player.Name .. ": " .. tostring(err))
 	else
 		Leaderboard.submit(player.UserId, profile.rating)
+		if profile.pveLevel > 0 then
+			Leaderboard.submitPveLevel(player.UserId, profile.pveLevel)
+		end
 	end
 	return ok
 end
@@ -207,6 +228,33 @@ function PlayerData.addXp(player: Player, amount: number): {oldXp: number, newXp
 	end
 	
 	return {oldXp = oldXp, newXp = newXp, levelups = levelups, unlocks = unlocks}
+end
+
+function PlayerData.addCoins(player: Player, amount: number)
+	local profile = cache[player]
+	if profile then
+		profile.coins += amount
+	end
+end
+
+function PlayerData.spendCoins(player: Player, amount: number): boolean
+	local profile = cache[player]
+	if profile and profile.coins >= amount then
+		profile.coins -= amount
+		return true
+	end
+	return false
+end
+
+function PlayerData.recordPveClear(player: Player, level: number): boolean
+	local profile = cache[player]
+	if profile then
+		if level > profile.pveLevel then
+			profile.pveLevel = level
+			return true
+		end
+	end
+	return false
 end
 
 -- Sync profile to client

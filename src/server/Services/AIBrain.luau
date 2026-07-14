@@ -8,6 +8,7 @@ local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Units = require(ReplicatedStorage.Shared.Config.Units)
 local Turrets = require(ReplicatedStorage.Shared.Config.Turrets)
 local DifficultyConfig = require(ReplicatedStorage.Shared.Config.DifficultyConfig)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Match = require(script.Parent.Match)
 local UnitSim = require(script.Parent.UnitSim)
@@ -108,6 +109,10 @@ function AIBrain.tick(match: Match.Match)
 	end
 
 	local diffConfig = DifficultyConfig.LEVELS[match.difficulty] or DifficultyConfig.LEVELS[DifficultyConfig.DEFAULT]
+	if match.mode == "PvE-Levels" then
+		local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
+		diffConfig = PvELevels.difficultyForLevel(match.pveLevel or 1)
+	end
 	local s = match.sides[SIDE]
 	local now = os.clock()
 
@@ -119,8 +124,100 @@ function AIBrain.tick(match: Match.Match)
 			nextTurretAt = now + diffConfig.aiTurretInterval,
 			counterSpawns = 0,
 			counterRole = nil,
+			bossSpawned = false,
 		}
 		aiState[match] = state
+	end
+
+	-- Boss Spawn Check
+	if match.mode == "PvE-Levels" and not state.bossSpawned then
+		local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
+		local level = match.pveLevel or 1
+		if PvELevels.isBossLevel(level) then
+			-- Wait a short time before spawning boss (e.g. 5 seconds)
+			if now - match.startedAt > 5 then
+				state.bossSpawned = true
+				local bossConf = PvELevels.getBossConfig(level)
+				local def = Units.byId[bossConf.unitId]
+				if def then
+					-- Create a cloned def for the boss to modify its stats
+					local bossDef = table.clone(def)
+					bossDef.hp = math.floor(def.hp * bossConf.hpMult)
+					bossDef.damage = math.floor(def.damage * bossConf.damageMult)
+					
+					-- Inject directly into the front of the queue: popQueue doesn't gate
+					-- on cost or age, so the AI's own age/economy stay untouched.
+					table.insert(s.queue, 1, bossDef.id)
+					
+					-- We need to attach the slam ability. We can do this in a loop searching for the unit
+					-- or wait for it to spawn.
+					task.spawn(function()
+						-- Poll until the boss unit appears in the world
+						local bossRec = nil
+						for i = 1, 40 do
+							task.wait(0.5)
+							if match.status ~= "Active" then return end
+							for _, rec in s.units do
+								if rec.def.id == bossConf.unitId and not (rec :: any).isBoss then
+									bossRec = rec
+									break
+								end
+							end
+							if bossRec then break end
+						end
+						
+						if bossRec then
+							(bossRec :: any).isBoss = true
+							bossRec.model:ScaleTo(bossConf.modelScale)
+							bossRec.hp = bossDef.hp
+							bossRec.maxHp = bossDef.hp
+							bossRec.scaledDamage = bossDef.damage
+							
+							-- Periodic Slam
+							task.spawn(function()
+								while not bossRec.dead and match.status == "Active" do
+									task.wait(bossConf.slamCooldown)
+									if bossRec.dead or match.status ~= "Active" then break end
+									
+									-- Slam effect
+									Remotes.FX:FireAllClients("ImpactVFX", { pos = bossRec.body.Position, age = 5 })
+									local slamPos = bossRec.body.Position
+									
+									-- Find all player units and hero in radius
+									local enemySide = Match.enemyOf(SIDE)
+									for _, enemyRec in match.sides[enemySide].units do
+										if not enemyRec.dead and (enemyRec.body.Position - slamPos).Magnitude <= bossConf.slamRadius then
+											UnitSim.damageUnit(match, enemyRec, bossRec.scaledDamage * 1.5, SIDE, false)
+											-- Brief stun: push the unit's next attack window out
+											enemyRec.nextAttackAt = os.clock() + bossConf.slamStunDuration
+										end
+									end
+									
+									-- Hit hero
+									for _, p in game:GetService("Players"):GetPlayers() do
+										if p:GetAttribute("Side") == enemySide and p.Character then
+											local hrp = p.Character:FindFirstChild("HumanoidRootPart")
+											local hum = p.Character:FindFirstChild("Humanoid")
+											if hrp and hum and hum.Health > 0 and (hrp.Position - slamPos).Magnitude <= bossConf.slamRadius then
+												hum:TakeDamage(bossRec.scaledDamage * 1.5)
+												-- knockback
+												local bv = Instance.new("BodyVelocity")
+												bv.Velocity = ((hrp.Position - slamPos).Unit + Vector3.new(0, 0.5, 0)).Unit * 50
+												bv.MaxForce = Vector3.new(1,1,1) * 100000
+												bv.Parent = hrp
+												game:GetService("Debris"):AddItem(bv, 0.2)
+											end
+										end
+									end
+								end
+							end)
+						end
+					end)
+				end
+			end
+		else
+			state.bossSpawned = true -- not a boss level
+		end
 	end
 
 	-- 1. EVOLVE

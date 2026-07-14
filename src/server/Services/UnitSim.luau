@@ -9,6 +9,7 @@ local Debris = game:GetService("Debris")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Units = require(ReplicatedStorage.Shared.Config.Units)
+local DifficultyConfig = require(ReplicatedStorage.Shared.Config.DifficultyConfig)
 local StatusEffects = require(ReplicatedStorage.Shared.Config.StatusEffects)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
@@ -270,7 +271,13 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	end
 	-- Each unit trains for its own duration: (trainTime) --> unit --> (trainTime) --> unit ...
 	local frontDef = Units.byId[s.queue[1]]
-	if now - s.lastSpawnAt < frontDef.trainTime then
+	local trainTime = frontDef.trainTime
+	-- PvE Levels: the AI trains its army faster as levels climb.
+	if match.mode == "PvE-Levels" and s.side == "B" then
+		local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
+		trainTime /= PvELevels.difficultyForLevel(match.pveLevel or 1).aiTrainSpeedMult
+	end
+	if now - s.lastSpawnAt < trainTime then
 		return
 	end
 	s.lastSpawnAt = now
@@ -285,9 +292,26 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	spawnCf = spawnCf * CFrame.new(0, 0, backOff) -- spawn cf faces lane; +z is behind
 	local model, body = buildUnitModel(def, s.side, spawnCf)
 
-	-- PvP uses identical base stats for both sides.
+	-- PvP uses identical base stats for both sides. In PvE the AI (side "B")
+	-- gets the difficulty HP/damage multipliers so harder tiers actually hit harder.
 	local scaledHp = def.hp
 	local scaledDamage = def.damage
+	if (match.mode == "PvE" or match.mode == "PvE-Levels") and s.side == "B" then
+		local diffConfig = DifficultyConfig.LEVELS[match.difficulty] or DifficultyConfig.LEVELS[DifficultyConfig.DEFAULT]
+		if match.mode == "PvE-Levels" then
+			local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
+			diffConfig = PvELevels.difficultyForLevel(match.pveLevel or 1)
+		end
+		scaledHp = math.floor(def.hp * diffConfig.hpMult)
+		scaledDamage = math.floor(def.damage * diffConfig.damageMult)
+	end
+	
+	if match.mode == "PvE-Levels" and s.side == "A" then
+		if s.pveUpgrades then
+			scaledHp = math.floor(scaledHp * (1 + 0.03 * (s.pveUpgrades.unitHp or 0)))
+			scaledDamage = math.floor(scaledDamage * (1 + 0.03 * (s.pveUpgrades.unitDamage or 0)))
+		end
+	end
 
 	local rec: Match.UnitRecord = {
 		model = model,
@@ -565,7 +589,14 @@ local function processProjectiles(match: Match.Match, dt: number)
 			if not hit then
 				for _, enemyRec in match.sides[enemySide].units do
 					if not enemyRec.dead and (enemyRec.body.Position - nextPos).Magnitude < 4.0 then
-						UnitSim.damageUnit(match, enemyRec, p.damage, p.side, false)
+						-- Heavies are the intended counter to ranged: they armor-soak
+						-- projectiles so they can close and crush the squishy shooters.
+						local role = enemyRec.def.role
+						local dmg = p.damage
+						if role == "heavy" or role == "super_heavy" then
+							dmg *= GameConfig.RANGED_ARMOR_MULT
+						end
+						UnitSim.damageUnit(match, enemyRec, dmg, p.side, false)
 						Remotes.FX:FireAllClients("ImpactVFX", { pos = enemyRec.body.Position, age = p.age })
 						hit = true
 						break

@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
 local Units = require(ReplicatedStorage.Shared.Config.Units)
+local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 
 local MapBuilder = require(script.Parent.MapBuilder)
 
@@ -64,6 +65,8 @@ export type SideState = {
 	units: { UnitRecord },
 	turrets: { [number]: TurretRecord? },
 	heroUpgrades: { dmg: number, health: number, def: number },
+	pveUpgrades: { unitHp: number, unitDamage: number, startingGold: number }?,
+	pvePerks: { string }?,
 	incomeCarry: number,
 	lastEconomyAt: number,
 	doctrine: string?,
@@ -77,7 +80,8 @@ export type Match = {
 	winner: string?,
 	resultCommitted: boolean,
 	difficulty: string, -- "Normal" | "Harder" | "Impossible"
-	mode: "PvE" | "PvP",
+	pveLevel: number?, -- Set for PvE-Levels mode
+	mode: "PvE" | "PvP" | "PvE-Levels",
 	projectiles: { ProjectileRecord },
 	-- callbacks wired by init
 	onAgeUp: (side: string, newAge: number) -> ()?,
@@ -126,7 +130,12 @@ function Match.getIncomeRate(match: Match, side: string): number
 	elseif elapsed >= GameConfig.ESCALATION_START then
 		mult = GameConfig.ESCALATION_INCOME_MULT
 	end
-	return (GameConfig.PASSIVE_INCOME_BY_AGE[s.age] + comeback) * mult
+	local rate = (GameConfig.PASSIVE_INCOME_BY_AGE[s.age] + comeback) * mult
+	-- PvE Levels: the AI's gold production scales with the level.
+	if match.mode == "PvE-Levels" and side == "B" then
+		rate *= PvELevels.difficultyForLevel(match.pveLevel or 1).aiIncomeMult
+	end
+	return rate
 end
 
 function Match.tickEconomy(match: Match, now: number)
@@ -152,7 +161,8 @@ function Match.new(map: MapBuilder.MapHandle, difficulty: string?): Match
 		winner = nil,
 		resultCommitted = false,
 		difficulty = difficulty or "Normal",
-		mode = "PvE" :: "PvE",
+		pveLevel = nil,
+		mode = "PvE" :: any,
 		projectiles = {},
 		onAgeUp = nil,
 		onBaseDamaged = nil,
@@ -316,8 +326,11 @@ function Match.buildSnapshot(match: Match, playerSide: string): { [string]: any 
 		turrets = turretInfo,
 		status = match.status,
 		difficulty = match.difficulty,
+		pveLevel = match.pveLevel,
 		mode = match.mode,
 		heroUpgrades = s.heroUpgrades,
+		pveUpgrades = s.pveUpgrades,
+		pvePerks = s.pvePerks,
 		doctrine = s.doctrine,
 		playerSide = playerSide,
 	}

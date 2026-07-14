@@ -15,6 +15,7 @@ local GameConfig = {
 	-- Units
 	UNIT_CAP = 20, -- alive per side
 	QUEUE_CAP = 10, -- per-unit train times live in Units.luau (trainTime)
+	RANGED_ARMOR_MULT = 0.5, -- heavies/super-heavies take this fraction of ranged projectile damage (armor)
 
 	-- Base
 	BASE_MAX_HP = 750,
