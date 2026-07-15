@@ -3,6 +3,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
@@ -12,10 +13,13 @@ local Specials = require(ReplicatedStorage.Shared.Config.Specials)
 local HeroWeapons = require(ReplicatedStorage.Shared.Config.HeroWeapons)
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
 local Synergies = require(ReplicatedStorage.Shared.Config.Synergies)
+local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Audio = require(script.Parent.Audio)
 
 local GameUI = {}
+local lastState: { [string]: any } = {}
+local showMessage: (text: string, color: Color3, duration: number?) -> ()
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -60,6 +64,8 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "GameHUD"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
+gui.ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
+gui.ClipToDeviceSafeArea = true
 gui.Parent = playerGui
 
 -- Crosshair
@@ -99,9 +105,14 @@ end
 
 -- Base HP bars
 local myBaseBg, myBaseFill = bar(gui, UDim2.new(0.02, 0, 0.03, 0), UDim2.new(0.25, 0, 0.03, 0), Color3.fromRGB(70, 140, 230))
-label(myBaseBg, { Size = UDim2.fromScale(1, 1), Text = "YOUR BASE", ZIndex = 3, TextTransparency = 0.25 })
+local myBaseLabel = label(myBaseBg, { Size = UDim2.fromScale(1, 1), Text = "YOUR BASE", ZIndex = 3, TextTransparency = 0.15 })
 local enBaseBg, enBaseFill = bar(gui, UDim2.new(0.73, 0, 0.03, 0), UDim2.new(0.25, 0, 0.03, 0), Color3.fromRGB(220, 80, 70))
-label(enBaseBg, { Size = UDim2.fromScale(1, 1), Text = "ENEMY BASE", ZIndex = 3, TextTransparency = 0.25 })
+local enBaseLabel = label(enBaseBg, { Size = UDim2.fromScale(1, 1), Text = "ENEMY BASE", ZIndex = 3, TextTransparency = 0.15 })
+
+-- Dedicated hero health is kept separate from base health so first-person
+-- players never have to rely on the platform CoreGui during combat.
+local heroHpBg, heroHpFill = bar(gui, UDim2.new(0.02, 0, 0.105, 0), UDim2.new(0.2, 0, 0.022, 0), Color3.fromRGB(75, 205, 105))
+local heroHpLabel = label(heroHpBg, { Size = UDim2.fromScale(1, 1), Text = "HERO 100 / 100", ZIndex = 3, TextTransparency = 0.08 })
 
 -- Age + XP (top center)
 local ageLabel = label(gui, {
@@ -156,6 +167,14 @@ local diffLabel = label(gui, {
 	TextColor3 = Color3.fromRGB(150, 200, 150),
 })
 
+local paceLabel = label(gui, {
+	Position = UDim2.new(0.02, 0, 0.07, 0),
+	Size = UDim2.new(0.28, 0, 0.026, 0),
+	Text = "00:00 • STANDARD",
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(190, 200, 215),
+})
+
 -- Evolve button
 local evolveBtn = Instance.new("TextButton")
 evolveBtn.AnchorPoint = Vector2.new(0.5, 0)
@@ -171,6 +190,28 @@ evolveBtn.Parent = gui
 local evCorner = Instance.new("UICorner")
 evCorner.CornerRadius = UDim.new(0, 6)
 evCorner.Parent = evolveBtn
+
+-- Keep the crosshair in device-safe camera coordinates, but move only the
+-- informational widgets below Roblox's dynamic top bar.
+local topHudPositions: { [GuiObject]: UDim2 } = {
+	[myBaseBg] = myBaseBg.Position,
+	[enBaseBg] = enBaseBg.Position,
+	[heroHpBg] = heroHpBg.Position,
+	[ageLabel] = ageLabel.Position,
+	[xpBg] = xpBg.Position,
+	[objectiveFrame] = objectiveFrame.Position,
+	[diffLabel] = diffLabel.Position,
+	[paceLabel] = paceLabel.Position,
+	[evolveBtn] = evolveBtn.Position,
+}
+local function applyTopbarInset()
+	local offset = math.max(GuiService.TopbarInset.Height, 0)
+	for widget, basePosition in topHudPositions do
+		widget.Position = basePosition + UDim2.fromOffset(0, offset)
+	end
+end
+GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(applyTopbarInset)
+applyTopbarInset()
 
 -- Gold display (large, easy to read above hotbar)
 local goldFrame = Instance.new("Frame")
@@ -286,6 +327,7 @@ local guideStatus = label(guidePanel, {
 	Position = UDim2.fromScale(0.12, 0.86), Size = UDim2.fromScale(0.76, 0.07),
 	Text = "Current doctrine: Not chosen", TextColor3 = Color3.fromRGB(245, 210, 110), ZIndex = 21,
 })
+local guideProgressLabels: { [string]: TextLabel } = {}
 for i, doctrine in Synergies.list do
 	local card = Instance.new("Frame")
 	card.Position = UDim2.fromScale(0.07, 0.22 + (i - 1) * 0.205)
@@ -302,16 +344,137 @@ for i, doctrine in Synergies.list do
 		Text = doctrine.name, TextColor3 = doctrine.color, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22,
 	})
 	label(card, {
-		Position = UDim2.fromScale(0.03, 0.42), Size = UDim2.fromScale(0.94, 0.46),
+		Position = UDim2.fromScale(0.03, 0.38), Size = UDim2.fromScale(0.94, 0.36),
 		Text = doctrine.description, TextWrapped = true, TextScaled = false, TextSize = 15,
 		TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(225, 225, 235), ZIndex = 22,
 	})
+	guideProgressLabels[doctrine.id] = label(card, {
+		Position = UDim2.fromScale(0.03, 0.76), Size = UDim2.fromScale(0.94, 0.18),
+		Text = "Progress: 0", TextScaled = false, TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(190, 200, 215), ZIndex = 22,
+	})
 end
+
+-- Turret manager: quick-build remains on hotbar slot 5; this panel exposes
+-- the four individual mounts so obsolete turrets can be upgraded or sold.
+local turretButton = Instance.new("TextButton")
+turretButton.Position = UDim2.new(0.02, 0, 0.145, 0)
+turretButton.Size = UDim2.new(0.14, 0, 0.045, 0)
+turretButton.BackgroundColor3 = Color3.fromRGB(52, 72, 92)
+turretButton.TextColor3 = Color3.new(1, 1, 1)
+turretButton.Font = FONT
+turretButton.TextScaled = true
+turretButton.Text = "TURRETS [B]"
+turretButton.Parent = gui
+local turretButtonCorner = Instance.new("UICorner")
+turretButtonCorner.CornerRadius = UDim.new(0, 7)
+turretButtonCorner.Parent = turretButton
+
+local turretPanel = Instance.new("Frame")
+turretPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+turretPanel.Position = UDim2.fromScale(0.5, 0.48)
+turretPanel.Size = UDim2.new(0.48, 0, 0.58, 0)
+turretPanel.BackgroundColor3 = Color3.fromRGB(18, 22, 28)
+turretPanel.BackgroundTransparency = 0.04
+turretPanel.BorderSizePixel = 0
+turretPanel.Visible = false
+turretPanel.ZIndex = 20
+turretPanel.Parent = gui
+local turretCorner = Instance.new("UICorner")
+turretCorner.CornerRadius = UDim.new(0, 12)
+turretCorner.Parent = turretPanel
+local turretStroke = Instance.new("UIStroke")
+turretStroke.Color = Color3.fromRGB(105, 175, 225)
+turretStroke.Thickness = 2
+turretStroke.Parent = turretPanel
+
+label(turretPanel, {
+	Position = UDim2.fromScale(0.08, 0.04), Size = UDim2.fromScale(0.84, 0.09),
+	Text = "TURRET MANAGER", TextColor3 = Color3.fromRGB(140, 205, 245), ZIndex = 21,
+})
+label(turretPanel, {
+	Position = UDim2.fromScale(0.08, 0.12), Size = UDim2.fromScale(0.84, 0.055),
+	Text = "Upgrades automatically include the old turret's 50% sell credit.",
+	TextColor3 = Color3.fromRGB(185, 195, 210), ZIndex = 21,
+})
+
+local function turretActionButton(parent: Instance, text: string, position: UDim2, size: UDim2, color: Color3, callback: () -> ()): TextButton
+	local item = Instance.new("TextButton")
+	item.AnchorPoint = Vector2.new(0.5, 0.5)
+	item.Position = position
+	item.Size = size
+	item.BackgroundColor3 = color
+	item.BorderSizePixel = 0
+	item.Text = text
+	item.TextColor3 = Color3.new(1, 1, 1)
+	item.Font = FONT
+	item.TextScaled = true
+	item.ZIndex = 22
+	item.Parent = parent
+	local itemCorner = Instance.new("UICorner")
+	itemCorner.CornerRadius = UDim.new(0, 6)
+	itemCorner.Parent = item
+	item.Activated:Connect(callback)
+	return item
+end
+
+type TurretManagerRow = { status: TextLabel, primary: TextButton, sell: TextButton }
+local turretRows: { TurretManagerRow } = {}
+for slot = 1, GameConfig.TURRET_SLOTS do
+	local row = Instance.new("Frame")
+	row.Position = UDim2.fromScale(0.07, 0.19 + (slot - 1) * 0.145)
+	row.Size = UDim2.fromScale(0.86, 0.115)
+	row.BackgroundColor3 = Color3.fromRGB(30, 35, 44)
+	row.BorderSizePixel = 0
+	row.ZIndex = 21
+	row.Parent = turretPanel
+	local rowCorner = Instance.new("UICorner")
+	rowCorner.CornerRadius = UDim.new(0, 7)
+	rowCorner.Parent = row
+	local status = label(row, {
+		Position = UDim2.fromScale(0.03, 0.12), Size = UDim2.fromScale(0.42, 0.76),
+		Text = `SLOT {slot} • EMPTY`, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22,
+	})
+	local primary = turretActionButton(row, "BUILD", UDim2.fromScale(0.64, 0.5), UDim2.fromScale(0.3, 0.68), Color3.fromRGB(55, 115, 80), function()
+		local age = lastState.age or 1
+		local info = (lastState.turrets or {})[slot]
+		local current = Turrets[age]
+		local credit = typeof(info) == "table" and (info.sellValue or 0) or 0
+		local cost = math.max(0, current.cost - credit)
+		if typeof(info) == "table" and (info.age or age) >= age then return end
+		if (lastState.gold or 0) < cost then
+			showMessage(`NEED {cost - math.floor(lastState.gold or 0)} MORE GOLD`, Color3.fromRGB(255, 150, 120), 1.5)
+			return
+		end
+		Audio.play("buy")
+		Remotes.BuildTurret:FireServer(slot)
+	end)
+	local sell = turretActionButton(row, "SELL", UDim2.fromScale(0.88, 0.5), UDim2.fromScale(0.16, 0.68), Color3.fromRGB(115, 70, 55), function()
+		if typeof((lastState.turrets or {})[slot]) ~= "table" then return end
+		Audio.play("click")
+		Remotes.SellTurret:FireServer(slot)
+	end)
+	table.insert(turretRows, { status = status, primary = primary, sell = sell })
+end
+
+local closeTurrets = turretActionButton(turretPanel, "CLOSE", UDim2.fromScale(0.5, 0.91), UDim2.fromScale(0.22, 0.07), Color3.fromRGB(60, 65, 75), function()
+	turretPanel.Visible = false
+end)
+closeTurrets.ZIndex = 22
+
+local function toggleTurrets()
+	Audio.play("click")
+	turretPanel.Visible = not turretPanel.Visible
+	guidePanel.Visible = false
+	upgradesPanel.Visible = false
+end
+turretButton.Activated:Connect(toggleTurrets)
 
 local function toggleGuide()
 	Audio.play("click")
 	guidePanel.Visible = not guidePanel.Visible
 	upgradesPanel.Visible = false
+	turretPanel.Visible = false
 end
 guideButton.Activated:Connect(toggleGuide)
 
@@ -341,6 +504,8 @@ makeUpgBtn("def", "[3] DEFENSE +10%")
 upgradesToggle.Activated:Connect(function()
 	Audio.play("click")
 	upgradesPanel.Visible = not upgradesPanel.Visible
+	guidePanel.Visible = false
+	turretPanel.Visible = false
 end)
 
 -- Unit / queue count (small, below hotbar)
@@ -399,9 +564,6 @@ for i = 1, 6 do
 	makeSlot(tostring(i))
 end
 
-local lastState: { [string]: any } = {}
-local showMessage: (text: string, color: Color3, duration: number?) -> ()
-
 local function rejectAction(reason: string)
 	Audio.play("hover")
 	showMessage(reason, Color3.fromRGB(255, 150, 120), 1.5)
@@ -437,7 +599,7 @@ local function slotAction(i: number)
 				return
 			end
 		end
-		rejectAction("ALL TURRET SLOTS ARE FULL")
+		rejectAction("ALL SLOTS FULL • OPEN TURRETS [B] TO UPGRADE OR SELL")
 	elseif i == 6 then
 		if (lastState.specialCd or 0) > 0 then
 			rejectAction(`SPECIAL READY IN {math.ceil(lastState.specialCd)}s`)
@@ -476,12 +638,22 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		[Enum.KeyCode.Four] = 4,
 		[Enum.KeyCode.Five] = 5,
 		[Enum.KeyCode.Six] = 6,
+		[Enum.KeyCode.DPadUp] = 1,
+		[Enum.KeyCode.DPadRight] = 2,
+		[Enum.KeyCode.DPadDown] = 3,
+		[Enum.KeyCode.DPadLeft] = 5,
+		[Enum.KeyCode.ButtonX] = 6,
+		[Enum.KeyCode.ButtonB] = 4,
 	}
-	if key == Enum.KeyCode.E then
+	if key == Enum.KeyCode.E or key == Enum.KeyCode.ButtonR1 then
 		Audio.play("click")
 		upgradesPanel.Visible = not upgradesPanel.Visible
-	elseif key == Enum.KeyCode.G then
+		guidePanel.Visible = false
+		turretPanel.Visible = false
+	elseif key == Enum.KeyCode.G or key == Enum.KeyCode.ButtonSelect then
 		toggleGuide()
+	elseif key == Enum.KeyCode.B or key == Enum.KeyCode.ButtonL1 then
+		toggleTurrets()
 	elseif map[key] then
 		local num = map[key]
 		if upgradesPanel.Visible and num <= 3 then
@@ -491,7 +663,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		else
 			slotAction(num)
 		end
-	elseif key == Enum.KeyCode.Q then
+	elseif key == Enum.KeyCode.Q or key == Enum.KeyCode.ButtonY then
 		if lastState.canEvolve then
 			Audio.play("buy")
 			Remotes.Evolve:FireServer()
@@ -507,11 +679,71 @@ local function refresh(state: { [string]: any })
 	local age = state.age :: number
 	local gold = state.gold :: number
 	guideStatus.Text = state.doctrine and `Current doctrine: {state.doctrine} (LOCKED)` or "Current doctrine: Not chosen"
+	local roleCounts = state.roleCounts or {}
+	for _, doctrine in Synergies.list do
+		local progress = guideProgressLabels[doctrine.id]
+		if state.doctrine then
+			progress.Text = state.doctrine == doctrine.id and "ACTIVE FOR THIS BATTLE" or "LOCKED OUT THIS BATTLE"
+			progress.TextColor3 = state.doctrine == doctrine.id and doctrine.color or Color3.fromRGB(125, 125, 135)
+		else
+			local parts = {}
+			for _, role in { "melee", "ranged", "heavy", "super_heavy" } do
+				local required = doctrine.requirements[role]
+				if required then
+					local displayRole = string.upper(string.gsub(role, "_", " "))
+					table.insert(parts, `{displayRole} {math.min(roleCounts[role] or 0, required)}/{required}`)
+				end
+			end
+			progress.Text = `Progress: {table.concat(parts, " • ")}`
+			progress.TextColor3 = doctrine.color
+		end
+	end
+
+	local currentTurret = Turrets[age]
+	for slot, row in turretRows do
+		local info = (state.turrets or {})[slot]
+		if typeof(info) == "table" then
+			row.status.Text = `SLOT {slot} • {string.upper(info.name or "TURRET")}  (AGE {info.age or age})`
+			row.sell.Visible = true
+			row.sell.Text = `SELL +{info.sellValue or 0}`
+			if (info.age or age) < age then
+				local upgradeCost = math.max(0, currentTurret.cost - (info.sellValue or 0))
+				row.primary.Text = `UPGRADE {upgradeCost}g`
+				row.primary.Active = gold >= upgradeCost
+				row.primary.BackgroundColor3 = gold >= upgradeCost and Color3.fromRGB(55, 115, 80) or Color3.fromRGB(75, 55, 55)
+			else
+				row.primary.Text = "CURRENT"
+				row.primary.Active = false
+				row.primary.BackgroundColor3 = Color3.fromRGB(55, 65, 70)
+			end
+		else
+			row.status.Text = `SLOT {slot} • EMPTY`
+			row.sell.Visible = false
+			row.primary.Text = `BUILD {currentTurret.cost}g`
+			row.primary.Active = gold >= currentTurret.cost
+			row.primary.BackgroundColor3 = gold >= currentTurret.cost and Color3.fromRGB(55, 115, 80) or Color3.fromRGB(75, 55, 55)
+		end
+	end
 
 	goldLabel.Text = `{math.floor(gold)} g  (+{string.format("%.1f", state.incomeRate or 0)}/s)`
 	countLabel.Text = `units {state.unitCount}/20  queue {state.queueCount}`
 	ageLabel.Text = `AGE {age} / {#Ages}  •  {string.upper(state.ageName)}`
 	ageLabel.TextColor3 = Ages[age].color:Lerp(Color3.new(1, 1, 1), 0.5)
+	local elapsed = math.max(0, state.matchElapsed or 0)
+	local mins = math.floor(elapsed / 60)
+	local secs = math.floor(elapsed % 60)
+	if state.pacePhase == "Sudden Death" then
+		paceLabel.Text = `{mins}:{secs < 10 and "0" or ""}{secs} • SUDDEN DEATH • 3x BASE DAMAGE`
+		paceLabel.TextColor3 = Color3.fromRGB(255, 105, 90)
+	elseif state.pacePhase == "Escalation" then
+		local remaining = math.max(0, GameConfig.SUDDEN_DEATH_START - elapsed)
+		paceLabel.Text = `{mins}:{secs < 10 and "0" or ""}{secs} • ESCALATION • SUDDEN DEATH IN {math.ceil(remaining)}s`
+		paceLabel.TextColor3 = Color3.fromRGB(255, 205, 105)
+	else
+		local remaining = math.max(0, GameConfig.ESCALATION_START - elapsed)
+		paceLabel.Text = `{mins}:{secs < 10 and "0" or ""}{secs} • ESCALATION IN {math.ceil(remaining)}s`
+		paceLabel.TextColor3 = Color3.fromRGB(190, 200, 215)
+	end
 
 	if state.nextAgeXp then
 		local prevReq = Ages[age].xpRequired
@@ -520,7 +752,7 @@ local function refresh(state: { [string]: any })
 		xpLabel.Text = `XP {math.floor(state.xp)} / {state.nextAgeXp}`
 		local nextAge = age + 1
 		local nextUnits = Units.byAge[nextAge]
-		evolveHint.Text = `EVOLVE → {string.upper(Ages[nextAge].name)}: {nextUnits[1].name}, {nextUnits[2].name}, {Turrets[nextAge].name}, {Specials[nextAge].name}, {HeroWeapons[nextAge].name}`
+		evolveHint.Text = `EVOLVE → {string.upper(Ages[nextAge].name)} • {#nextUnits} NEW UNITS • {HeroWeapons[nextAge].name} • {Turrets[nextAge].name} • {Specials[nextAge].name} • INCOME {GameConfig.PASSIVE_INCOME_BY_AGE[age]}→{GameConfig.PASSIVE_INCOME_BY_AGE[nextAge]}g/s • BASE HP ×2`
 	else
 		xpFill.Size = UDim2.fromScale(1, 1)
 		xpLabel.Text = "MAX AGE"
@@ -529,7 +761,9 @@ local function refresh(state: { [string]: any })
 
 	if state.difficulty then
 		if state.mode == "PvE-Levels" then
-			diffLabel.Text = `PvE Level {state.pveLevel or 1}`
+			diffLabel.Text = `CAMPAIGN {state.pveLevel or 1} / 25`
+		elseif state.mode == "PvE" then
+			diffLabel.Text = `PvE • {string.upper(state.difficulty)}`
 		elseif state.opponentName then
 			diffLabel.Text = `VS {state.opponentName}`
 		else
@@ -547,7 +781,7 @@ local function refresh(state: { [string]: any })
 	local u = state.heroUpgrades or { dmg = 0, health = 0, def = 0 }
 	for stat, ui in upgButtons do
 		local lvl = u[stat] or 0
-		if stat == "def" and lvl >= 5 then
+		if lvl >= GameConfig.HERO_UPGRADE_MAX_TIER then
 			ui.cost.Text = "MAX"
 			ui.btn.BackgroundColor3 = Color3.fromRGB(30, 40, 30)
 		else
@@ -559,6 +793,8 @@ local function refresh(state: { [string]: any })
 
 	myBaseFill.Size = UDim2.fromScale(math.clamp(state.baseHpSelf / state.baseMaxHpSelf, 0, 1), 1)
 	enBaseFill.Size = UDim2.fromScale(math.clamp(state.baseHpEnemy / state.baseMaxHpEnemy, 0, 1), 1)
+	myBaseLabel.Text = `YOUR BASE  •  {math.ceil(state.baseHpSelf)} / {math.ceil(state.baseMaxHpSelf)}`
+	enBaseLabel.Text = `ENEMY BASE  •  {math.ceil(state.baseHpEnemy)} / {math.ceil(state.baseMaxHpEnemy)}`
 
 	-- hotbar slots 1-4: units of current age
 	for i = 1, 4 do
@@ -612,8 +848,8 @@ end
 
 local function setQueueMode(enabled: boolean)
 	for _, widget in {
-		cross, myBaseBg, enBaseBg, ageLabel, xpBg, diffLabel,
-		goldFrame, upgradesToggle, countLabel, hotbar, guideButton,
+		cross, myBaseBg, enBaseBg, heroHpBg, ageLabel, xpBg, diffLabel, paceLabel,
+		goldFrame, upgradesToggle, countLabel, hotbar, guideButton, turretButton,
 	} do
 		widget.Visible = not enabled
 	end
@@ -624,6 +860,7 @@ local function setQueueMode(enabled: boolean)
 	end
 	upgradesPanel.Visible = false
 	guidePanel.Visible = false
+	turretPanel.Visible = false
 	evolveBtn.Visible = not enabled and lastState.nextAgeXp ~= nil
 end
 
@@ -669,11 +906,33 @@ local function baseAlarm()
 end
 
 function GameUI.start()
-	Remotes.StateUpdate.OnClientEvent:Connect(refresh)
+	local healthConnections: { RBXScriptConnection } = {}
+	local function disconnectHealth()
+		for _, connection in healthConnections do connection:Disconnect() end
+		table.clear(healthConnections)
+	end
+	local function bindHero(character: Model)
+		disconnectHealth()
+		local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
+		if not humanoid then return end
+		local function updateHealth()
+			local maximum = math.max(humanoid.MaxHealth, 1)
+			local health = math.max(humanoid.Health, 0)
+			local ratio = math.clamp(health / maximum, 0, 1)
+			heroHpFill.Size = UDim2.fromScale(ratio, 1)
+			heroHpFill.BackgroundColor3 = if ratio > 0.5 then Color3.fromRGB(75, 205, 105)
+				elseif ratio > 0.25 then Color3.fromRGB(235, 190, 65)
+				else Color3.fromRGB(225, 70, 65)
+			heroHpLabel.Text = `HERO  •  {math.ceil(health)} / {math.ceil(maximum)}`
+		end
+		table.insert(healthConnections, humanoid.HealthChanged:Connect(updateHealth))
+		table.insert(healthConnections, humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateHealth))
+		updateHealth()
+	end
+	player.CharacterAdded:Connect(bindHero)
+	if player.Character then task.spawn(bindHero, player.Character) end
 
-	Remotes.DifficultySelected.OnClientEvent:Connect(function(diff: string)
-		diffLabel.Text = "Mode: 1v1 PvP"
-	end)
+	Remotes.StateUpdate.OnClientEvent:Connect(refresh)
 
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
 		-- Victory/Defeat are handled by the MainMenu results screen
@@ -682,16 +941,10 @@ function GameUI.start()
 			showObjective()
 			local mode = data and data.mode
 			if mode == "PvP" then
-				showMessage("1v1 BATTLE START", Color3.new(1, 1, 1), 10)
-				task.delay(10.2, function()
-					showMessage("DESTROY THE ENEMY BASE • KILLS GIVE GOLD + XP • EVOLVE THROUGH 5 AGES", Color3.fromRGB(245, 220, 130), 5)
-				end)
+				showMessage("1v1 BATTLE START", Color3.new(1, 1, 1), 2.5)
 			else
 				local diffText = (data and data.difficulty) and data.difficulty:upper() or "NORMAL"
-				showMessage(`BATTLE START — {diffText} MODE`, Color3.new(1, 1, 1), 10)
-				task.delay(10.2, function()
-					showMessage("DESTROY THE ENEMY BASE • KILLS GIVE GOLD + XP • EVOLVE THROUGH 5 AGES", Color3.fromRGB(245, 220, 130), 5)
-				end)
+				showMessage(`BATTLE START — {diffText} MODE`, Color3.new(1, 1, 1), 2.5)
 			end
 		elseif event == "AgeUp" and data then
 			if data.side == lastState.playerSide then

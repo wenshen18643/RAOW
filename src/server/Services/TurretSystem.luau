@@ -52,15 +52,20 @@ function TurretSystem.tryBuild(match: Match.Match, side: string, slot: number, b
 		return false
 	end
 	local def = Turrets[s.age]
+	local oldRec = s.turrets[slot]
+	if oldRec and oldRec.def.age >= def.age then
+		return false
+	end
+	local upgradeCredit = oldRec and math.floor(oldRec.def.cost * GameConfig.TURRET_SELL_REFUND) or 0
+	local purchaseCost = math.max(0, def.cost - upgradeCredit)
 	if not bypassCost then
-		if s.gold < def.cost then
+		if s.gold < purchaseCost then
 			return false
 		end
-		s.gold -= def.cost
+		s.gold -= purchaseCost
 	end
 	
-	-- If a turret already exists in this slot, destroy its model to replace it
-	local oldRec = s.turrets[slot]
+	-- Replacing an obsolete turret automatically applies its normal sell credit.
 	if oldRec and oldRec.model then
 		oldRec.model:Destroy()
 	end
@@ -83,7 +88,7 @@ function TurretSystem.trySell(match: Match.Match, side: string, slot: number): b
 	return true
 end
 
-local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRecord, now: number)
+local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRecord, now: number, params: RaycastParams)
 	if now < rec.nextFireAt then
 		return
 	end
@@ -92,12 +97,7 @@ local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRec
 	local best: Match.UnitRecord? = nil
 	local bestDist = rec.def.range
 
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
-	local mapFolder = workspace:FindFirstChild("Map")
-	if mapFolder then
-		params.FilterDescendantsInstances = {mapFolder}
-	end
+	local mapFolder = match.map.folder
 
 	for _, unit in match.sides[enemySide].units do
 		if not unit.dead then
@@ -105,7 +105,7 @@ local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRec
 			if d < bestDist then
 				-- Check Line of Sight
 				local hasLOS = true
-				if mapFolder then
+				if mapFolder.Parent then
 					local res = workspace:Raycast(muzzlePos, unit.body.Position - muzzlePos, params)
 					if res and res.Instance.Name == "Rock" then
 						hasLOS = false
@@ -127,12 +127,12 @@ local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRec
 	for _, p in Players:GetPlayers() do
 		if p:GetAttribute("Side") == enemySide and p.Character then
 			local hrp = p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-			local hum = p.Character:FindFirstChild("Humanoid") :: Humanoid?
+			local hum = p.Character:FindFirstChildOfClass("Humanoid")
 			if hrp and hum and hum.Health > 0 then
 				local d = (hrp.Position - muzzlePos).Magnitude
 				if d < bestDist then
 					local hasLOS = true
-					if mapFolder then
+					if mapFolder.Parent then
 						local res = workspace:Raycast(muzzlePos, hrp.Position - muzzlePos, params)
 						if res and res.Instance.Name == "Rock" then
 							hasLOS = false
@@ -174,7 +174,7 @@ local function aimAndFire(match: Match.Match, side: string, rec: Match.TurretRec
 	})
 	
 	if targetIsHero and targetHum then
-		targetHum:TakeDamage(rec.def.damage)
+		targetHum:TakeDamage(Match.reduceHeroDamage(match, enemySide, rec.def.damage))
 		Remotes.FX:FireAllClients("Damage", {
 			pos = aimPos,
 			amount = rec.def.damage,
@@ -195,10 +195,13 @@ function TurretSystem.tick(match: Match.Match)
 		return
 	end
 	local now = os.clock()
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { match.map.folder }
 	for side, s in match.sides do
 		for _, rec in s.turrets do
 			if rec then
-				aimAndFire(match, side, rec, now)
+				aimAndFire(match, side, rec, now, params)
 			end
 		end
 	end

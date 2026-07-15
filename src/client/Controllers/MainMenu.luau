@@ -13,9 +13,12 @@ local UserInputService = game:GetService("UserInputService")
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
+local MonetizationConfig = require(ReplicatedStorage.Shared.Config.MonetizationConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Audio = require(script.Parent.Audio)
 local GameUI = require(script.Parent.GameUI)
+local Storefront = require(script.Parent.Storefront)
+local Settings = require(script.Parent.Settings)
 
 local MainMenu = {}
 
@@ -42,8 +45,9 @@ local pveUpgradesState = { unitHp = 0, unitDamage = 0, startingGold = 0 }
 local pvePerksState: {string} = {}
 local lastPveLevelPlayed = 0 -- the PvE level of the match in progress (from StateUpdate)
 
--- Returns "reward name (Lv N)" for the next ladder reward above `level`, or nil at the top.
+-- Shows the guaranteed next-level currency plus the next milestone collectible.
 local function nextUnlockText(level: number): string?
+	if level >= ProgressionConfig.MAX_LEVEL then return nil end
 	local bestLevel: number? = nil
 	for lvl in ProgressionConfig.Ladder do
 		if lvl > level and (bestLevel == nil or lvl < bestLevel) then
@@ -52,9 +56,9 @@ local function nextUnlockText(level: number): string?
 	end
 	if bestLevel then
 		local reward = ProgressionConfig.Ladder[bestLevel]
-		return `{reward.name}  (Lv {bestLevel})`
+		return `+{ProgressionConfig.WAR_BONDS_PER_LEVEL} Bonds at Lv {level + 1}  •  {reward.name} at Lv {bestLevel}`
 	end
-	return nil
+	return `+{ProgressionConfig.WAR_BONDS_PER_LEVEL} War Bonds at Lv {level + 1}`
 end
 
 --------------------------------------------------------------------------------
@@ -259,7 +263,9 @@ function MainMenu.start()
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "MainMenu"
 	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
+	gui.IgnoreGuiInset = false
+	gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+	gui.ClipToDeviceSafeArea = true
 	gui.DisplayOrder = 50
 	gui.Parent = playerGui
 
@@ -272,6 +278,7 @@ function MainMenu.start()
 	menuRoot.Active = true
 	menuRoot.ZIndex = 1
 	menuRoot.Parent = gui
+	local openStorefront = Storefront.attach(menuRoot)
 	local grad = Instance.new("UIGradient")
 	grad.Rotation = 90
 	grad.Transparency = NumberSequence.new({
@@ -355,7 +362,7 @@ function MainMenu.start()
 	local diffPanel = panel(gui, UDim2.new(0.46, 0, 0.58, 0))
 	local levelsPanel = panel(gui, UDim2.new(0.55, 0, 0.65, 0))
 	local pveUpgradesPanel = panel(gui, UDim2.new(0.5, 0, 0.65, 0))
-	local settingsPanel = panel(gui, UDim2.new(0.46, 0, 0.62, 0))
+	local settingsPanel = panel(gui, UDim2.new(0.5, 0, 0.72, 0))
 	local helpPanel = panel(gui, UDim2.new(0.5, 0, 0.66, 0))
 	local boardPanel = panel(gui, UDim2.new(0.38, 0, 0.62, 0))
 
@@ -385,7 +392,7 @@ function MainMenu.start()
 
 	local currentBoardType = "pvp"
 
-	-- left rail: secondary destinations (leaderboard, shop placeholder)
+	-- left rail: secondary destinations
 	button(menuRoot, "LEADERBOARD", UDim2.fromScale(0.09, 0.42), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(55, 65, 90), function()
 		closePanels()
 		boardPanel.Visible = true
@@ -425,7 +432,7 @@ function MainMenu.start()
 	})
 
 	local refreshLevelsUI: () -> ()
-	local levelsPage = 1 -- 20 levels per page; unlimited pages
+	local levelsPage = 1 -- 20 levels per page; the campaign ends at stage 25
 	button(modePanel, "PvE LEVELS", UDim2.fromScale(0.5, 0.5), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(150, 90, 40), function()
 		closePanels()
 		-- open on the page containing the next uncleared level
@@ -437,7 +444,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.57, 0),
 		Size = UDim2.new(0.7, 0, 0.035, 0),
-		Text = "Progress through increasingly difficult levels & bosses.",
+		Text = "Conquer 25 stages. Defeat a boss every 5 stages.",
 		TextColor3 = Color3.fromRGB(170, 170, 180),
 		ZIndex = 11,
 	})
@@ -555,13 +562,16 @@ function MainMenu.start()
 		Text = "Levels 1 - 20",
 		ZIndex = 11,
 	})
-	button(levelsPanel, ">", UDim2.fromScale(0.72, 0.745), UDim2.new(0.08, 0, 0.06, 0), Color3.fromRGB(60, 60, 70), function()
-		levelsPage += 1
-		refreshLevelsUI()
-	end).ZIndex = 11
+	local nextPageBtn = button(levelsPanel, ">", UDim2.fromScale(0.72, 0.745), UDim2.new(0.08, 0, 0.06, 0), Color3.fromRGB(60, 60, 70), function()
+		if levelsPage * LEVELS_PER_PAGE < PvELevels.MAX_LEVEL then
+			levelsPage += 1
+			refreshLevelsUI()
+		end
+	end)
+	nextPageBtn.ZIndex = 11
 
 	local playNextBtn = button(levelsPanel, "PLAY NEXT — LEVEL 1", UDim2.fromScale(0.5, 0.845), UDim2.new(0.5, 0, 0.07, 0), Color3.fromRGB(150, 110, 40), function()
-		startLevel(currentPveLevel + 1)
+		if currentPveLevel < PvELevels.MAX_LEVEL then startLevel(currentPveLevel + 1) end
 	end)
 	playNextBtn.ZIndex = 11
 
@@ -570,10 +580,12 @@ function MainMenu.start()
 			if child:IsA("TextButton") then child:Destroy() end
 		end
 		local firstLevel = (levelsPage - 1) * LEVELS_PER_PAGE + 1
-		local lastLevel = levelsPage * LEVELS_PER_PAGE
+		local lastLevel = math.min(levelsPage * LEVELS_PER_PAGE, PvELevels.MAX_LEVEL)
 		pageLabel.Text = `Levels {firstLevel} - {lastLevel}`
 		prevPageBtn.Visible = levelsPage > 1
-		playNextBtn.Text = `PLAY NEXT — LEVEL {currentPveLevel + 1}`
+		nextPageBtn.Visible = lastLevel < PvELevels.MAX_LEVEL
+		playNextBtn.Text = currentPveLevel < PvELevels.MAX_LEVEL and `PLAY NEXT — LEVEL {currentPveLevel + 1}` or "CAMPAIGN COMPLETE"
+		playNextBtn.BackgroundColor3 = currentPveLevel < PvELevels.MAX_LEVEL and Color3.fromRGB(150, 110, 40) or Color3.fromRGB(50, 100, 60)
 		for lvl = firstLevel, lastLevel do
 			local isBoss = PvELevels.isBossLevel(lvl)
 			local isLocked = lvl > currentPveLevel + 1
@@ -593,7 +605,12 @@ function MainMenu.start()
 				Position = UDim2.new(0, 0, 0.1, 0), Size = UDim2.new(1, 0, 0.3, 0),
 				Text = `Lv {lvl}`, TextColor3 = isLocked and Color3.fromRGB(100,100,100) or Color3.new(1,1,1), ZIndex = 13
 			})
-			if isBoss then
+			if PvELevels.isFinalLevel(lvl) then
+				label(btn, {
+					Position = UDim2.new(0, 0, 0.45, 0), Size = UDim2.new(1, 0, 0.25, 0),
+					Text = "FINAL BOSS", TextColor3 = isLocked and Color3.fromRGB(120,60,60) or GOLD, ZIndex = 13
+				})
+			elseif isBoss then
 				label(btn, {
 					Position = UDim2.new(0, 0, 0.45, 0), Size = UDim2.new(1, 0, 0.25, 0),
 					Text = "BOSS", TextColor3 = isLocked and Color3.fromRGB(120,60,60) or Color3.new(1,0.8,0.8), ZIndex = 13
@@ -606,7 +623,7 @@ function MainMenu.start()
 				})
 			end
 		end
-		levelsScroll.CanvasSize = UDim2.new(0, 0, 0, math.ceil(LEVELS_PER_PAGE / 4) * 110)
+		levelsScroll.CanvasSize = UDim2.new(0, 0, 0, math.ceil((lastLevel - firstLevel + 1) / 4) * 110)
 	end
 	
 	button(levelsPanel, "BACK", UDim2.fromScale(0.5, 0.93), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
@@ -667,6 +684,7 @@ function MainMenu.start()
 			
 			local currentTier = pveUpgradesState[id] or 0
 			local isOwned = isPerk and table.find(pvePerksState, id) ~= nil
+			local isMaxed = not isPerk and currentTier >= PvELevels.UPGRADE_TRACKS[id].maxTier
 			
 			local titleText = name
 			if not isPerk then titleText = `{name} (Tier {currentTier})` end
@@ -679,10 +697,10 @@ function MainMenu.start()
 			local cost = isPerk and PvELevels.PERKS[id].cost or PvELevels.upgradeCost(currentTier + 1)
 			if isOwned then cost = 0 end
 			
-			local canBuy = currentCoins >= cost and not isOwned
+			local canBuy = currentCoins >= cost and not isOwned and not isMaxed
 			
-			local btnText = isOwned and "OWNED" or `BUY ({cost}c)`
-			local btnColor = isOwned and Color3.fromRGB(50, 100, 50) 
+			local btnText = (isOwned or isMaxed) and "MAXED" or `BUY ({cost}c)`
+			local btnColor = (isOwned or isMaxed) and Color3.fromRGB(50, 100, 50)
 				or (canBuy and Color3.fromRGB(150, 110, 30) or Color3.fromRGB(80, 40, 40))
 				
 			button(row, btnText, UDim2.new(0.85, 0, 0.5, 0), UDim2.new(0.25, 0, 0.8, 0), btnColor, function()
@@ -710,7 +728,7 @@ function MainMenu.start()
 	--------------------------------------------------------------------------------
 	-- first-battle signpost (new players only): straight into a guided PvE match
 	--------------------------------------------------------------------------------
-	local firstBattleBtn = button(menuRoot, "FIRST BATTLE  —  EARN 300 XP", UDim2.fromScale(0.5, 0.325), UDim2.new(0.26, 0, 0.06, 0), Color3.fromRGB(170, 130, 30), function()
+	local firstBattleBtn = button(menuRoot, "FIRST BATTLE  —  WIN FOR 300 XP", UDim2.fromScale(0.5, 0.325), UDim2.new(0.28, 0, 0.06, 0), Color3.fromRGB(170, 130, 30), function()
 		startPve("Normal")
 	end)
 	firstBattleBtn.Visible = false
@@ -781,20 +799,40 @@ function MainMenu.start()
 		Text = "SETTINGS",
 		ZIndex = 11,
 	})
-	slider(settingsPanel, "Mouse Sensitivity", UDim2.new(0.5, 0, 0.22, 0), 0.35, function(v)
+	local applyingSettings = false
+	local setSensitivity = slider(settingsPanel, "Mouse Sensitivity", UDim2.new(0.5, 0, 0.16, 0), Settings.get("mouseSensitivity"), function(v)
 		-- 0..1 -> 0.2..2.5
 		UserInputService.MouseDeltaSensitivity = 0.2 + v * 2.3
+		if not applyingSettings then Settings.set("mouseSensitivity", v) end
 	end)
-	slider(settingsPanel, "SFX Volume", UDim2.new(0.5, 0, 0.4, 0), 1, function(v)
+	local setSfx = slider(settingsPanel, "SFX Volume", UDim2.new(0.5, 0, 0.31, 0), Settings.get("sfxVolume"), function(v)
 		Audio.setGroupVolume("SFX", v)
+		if not applyingSettings then Settings.set("sfxVolume", v) end
 	end)
-	slider(settingsPanel, "UI Volume", UDim2.new(0.5, 0, 0.58, 0), 1, function(v)
+	local setUi = slider(settingsPanel, "UI Volume", UDim2.new(0.5, 0, 0.46, 0), Settings.get("uiVolume"), function(v)
 		Audio.setGroupVolume("UI", v)
+		if not applyingSettings then Settings.set("uiVolume", v) end
 	end)
-	slider(settingsPanel, "Music Volume", UDim2.new(0.5, 0, 0.76, 0), 0.5, function(v)
-		Audio.setGroupVolume("Music", v)
+	local reducedBtn: TextButton
+	local numbersBtn: TextButton
+	local function refreshComfortButtons()
+		reducedBtn.Text = Settings.get("reducedEffects") and "REDUCED EFFECTS: ON" or "REDUCED EFFECTS: OFF"
+		reducedBtn.BackgroundColor3 = Settings.get("reducedEffects") and Color3.fromRGB(55, 120, 75) or Color3.fromRGB(70, 70, 82)
+		numbersBtn.Text = Settings.get("showDamageNumbers") and "DAMAGE NUMBERS: ON" or "DAMAGE NUMBERS: OFF"
+		numbersBtn.BackgroundColor3 = Settings.get("showDamageNumbers") and Color3.fromRGB(55, 120, 75) or Color3.fromRGB(70, 70, 82)
+	end
+	reducedBtn = button(settingsPanel, "", UDim2.fromScale(0.5, 0.64), UDim2.new(0.55, 0, 0.07, 0), Color3.fromRGB(70, 70, 82), function()
+		Settings.set("reducedEffects", not Settings.get("reducedEffects"))
+		refreshComfortButtons()
 	end)
-	button(settingsPanel, "BACK", UDim2.fromScale(0.5, 0.93), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
+	reducedBtn.ZIndex = 11
+	numbersBtn = button(settingsPanel, "", UDim2.fromScale(0.5, 0.75), UDim2.new(0.55, 0, 0.07, 0), Color3.fromRGB(70, 70, 82), function()
+		Settings.set("showDamageNumbers", not Settings.get("showDamageNumbers"))
+		refreshComfortButtons()
+	end)
+	numbersBtn.ZIndex = 11
+	refreshComfortButtons()
+	button(settingsPanel, "BACK", UDim2.fromScale(0.5, 0.9), UDim2.new(0.24, 0, 0.075, 0), Color3.fromRGB(60, 60, 70), function()
 		settingsPanel.Visible = false
 	end).ZIndex = 11
 
@@ -808,12 +846,15 @@ function MainMenu.start()
 		Text = "HOW TO PLAY",
 		ZIndex = 11,
 	})
+	local controlsText = if UserInputService.TouchEnabled then "Touch — aim, attack, and tap hotbar cards"
+		elseif UserInputService.GamepadEnabled then "R2/L2 — attack/heavy  ·  D-pad/B — recruit/build  ·  L1 — turrets  ·  Y — evolve"
+		else "WASD — move  ·  Mouse — aim/attack  ·  Right Mouse — heavy attack"
 	local helpLines = {
 		"You are the HERO — fight in first person AND command your army.",
 		"",
-		"WASD — move    ·    Mouse — aim / attack",
-		"1 / 2 / 3 — spawn Melee / Ranged / Heavy unit",
-		"4 — build turret    ·    5 — special ability    ·    Q — evolve age",
+		controlsText,
+		"1 / 2 / 3 / 4 — recruit available units",
+		"5 — build turret  ·  B — manage turrets  ·  6 — special  ·  Q — evolve  ·  E/G — upgrades/guide",
 		"",
 		"There are 5 stages: Stone, Medieval, Renaissance, Modern, and Future.",
 		"Kills earn GOLD for troops and XP for evolution.",
@@ -858,8 +899,8 @@ function MainMenu.start()
 	})
 	local resultStats = label(results, {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.4, 0),
-		Size = UDim2.new(0.5, 0, 0.2, 0),
+		Position = UDim2.new(0.5, 0, 0.35, 0),
+		Size = UDim2.new(0.58, 0, 0.3, 0),
 		Text = "",
 		TextScaled = false,
 		TextSize = 24,
@@ -874,11 +915,29 @@ function MainMenu.start()
 		TextColor3 = Color3.fromRGB(170, 170, 180),
 		ZIndex = 9,
 	})
-	button(results, "RETURN TO LOBBY", UDim2.fromScale(0.5, 0.76), UDim2.new(0.22, 0, 0.065, 0), Color3.fromRGB(55, 75, 105), function()
-		Remotes.LeaveMatch:FireServer()
+	local resultCanNextStage = false
+	local resultWaitingRematch = false
+	local resultRematchReady = 0
+	local resultPrimary: TextButton
+	resultPrimary = button(results, "PLAY AGAIN", UDim2.fromScale(0.38, 0.75), UDim2.new(0.2, 0, 0.065, 0), Color3.fromRGB(55, 125, 75), function()
+		local action = if lastMode == "PvE-Levels" and resultCanNextStage then "next" else "replay"
+		Remotes.ResultAction:FireServer(action)
+		resultWaitingRematch = lastMode == "PvP"
+		if resultWaitingRematch then resultRematchReady = math.max(resultRematchReady, 1) end
+		resultPrimary.Active = false
+		resultPrimary.Text = lastMode == "PvP" and "REMATCH REQUESTED" or "STARTING..."
+		resultPrimary.BackgroundColor3 = Color3.fromRGB(55, 60, 65)
+	end)
+	resultPrimary.ZIndex = 9
+	local resultReturn = button(results, "RETURN TO MENU", UDim2.fromScale(0.62, 0.75), UDim2.new(0.2, 0, 0.065, 0), Color3.fromRGB(55, 75, 105), function()
+		Remotes.ResultAction:FireServer("menu")
+	end)
+	resultReturn.ZIndex = 9
+	button(results, "ARMORY / REWARDS", UDim2.fromScale(0.5, 0.845), UDim2.new(0.22, 0, 0.055, 0), Color3.fromRGB(105, 75, 145), function()
+		openStorefront()
 	end).ZIndex = 9
 
-	local function showResults(won: boolean, restartIn: number, ratingDelta: number?, xpData: any, coins: number?, firstClear: boolean?)
+	local function showResults(won: boolean, decisionIn: number, ratingDelta: number?, xpData: any, coins: number?, firstClear: boolean?, dailyWarBonds: number?, canNextStage: boolean?)
 		local dur = os.clock() - matchStartAt
 		local mins = math.floor(dur / 60)
 		local secs = math.floor(dur % 60)
@@ -891,7 +950,7 @@ function MainMenu.start()
 		if xpData then
 			xpText = `\nXP Earned:  +{xpData.newXp - xpData.oldXp}`
 			if xpData.levelups > 0 then
-				xpText ..= `\nLevel Up! (+{xpData.levelups})`
+				xpText ..= `\nLevel Up! (+{xpData.levelups})  •  +{xpData.warBondsEarned or 0} War Bonds`
 			end
 			if xpData.unlocks and #xpData.unlocks > 0 then
 				xpText ..= `\nUnlocked: {table.concat(xpData.unlocks, ", ")}`
@@ -904,17 +963,32 @@ function MainMenu.start()
 		
 		local coinsText = coins and `\nCoins Earned: +{coins}` or ""
 		if firstClear then coinsText ..= " (First Clear Bonus!)" end
+		local bondsText = dailyWarBonds and dailyWarBonds > 0 and `\nDaily Orders: +{dailyWarBonds} War Bonds` or ""
 		
-		resultStats.Text = `Mode:  {modeText}\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}{xpText}{coinsText}`
+		resultStats.Text = `Mode:  {modeText}\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}{xpText}{coinsText}{bondsText}`
+		resultCanNextStage = lastMode == "PvE-Levels" and won and canNextStage == true
+		resultWaitingRematch = false
+		resultRematchReady = 0
+		resultPrimary.Text = if lastMode == "PvP" then "REQUEST REMATCH"
+			elseif resultCanNextStage then `NEXT STAGE  ({lastPveLevelPlayed + 1})`
+			elseif lastMode == "PvE-Levels" then "REPLAY STAGE"
+			else "PLAY AGAIN"
+		resultPrimary.Active = true
+		resultPrimary.BackgroundColor3 = Color3.fromRGB(55, 125, 75)
+		resultReturn.Text = lastMode == "PvP" and "RETURN TO LOBBY" or "RETURN TO MENU"
 		results.Visible = true
 		task.spawn(function()
-			for t = restartIn, 1, -1 do
+			local destination = lastMode == "PvP" and "lobby" or "menu"
+			for t = decisionIn, 1, -1 do
 				if not results.Visible then
 					return
 				end
-				resultCountdown.Text = `Next battle in {t}...`
+				resultCountdown.Text = if resultWaitingRematch
+					then `Rematch ready: {resultRematchReady}/2 • returning to {destination} in {t}s`
+					else `Choose an option • returning to {destination} in {t}s`
 				task.wait(1)
 			end
+			if results.Visible then resultCountdown.Text = `Returning to {destination}...` end
 		end)
 	end
 
@@ -924,6 +998,15 @@ function MainMenu.start()
 	
 	Remotes.ProfileSync.OnClientEvent:Connect(function(profile)
 		if typeof(profile) == "table" and typeof(profile.level) == "number" and typeof(profile.xp) == "number" then
+			if typeof(profile.settings) == "table" then
+				Settings.apply(profile.settings)
+				applyingSettings = true
+				setSensitivity(Settings.get("mouseSensitivity"))
+				setSfx(Settings.get("sfxVolume"))
+				setUi(Settings.get("uiVolume"))
+				applyingSettings = false
+				refreshComfortButtons()
+			end
 			currentLevel = profile.level
 			currentCoins = profile.coins or 0
 			currentPveLevel = profile.pveLevel or 0
@@ -933,7 +1016,8 @@ function MainMenu.start()
 			if pveUpgradesPanel.Visible then refreshUpgradesUI() end
 			if levelsPanel.Visible then refreshLevelsUI() end
 			
-			levelLabel.Text = `LEVEL {profile.level}`
+			local equippedTitle = MonetizationConfig.cosmeticById(profile.equippedTitle or "")
+			levelLabel.Text = equippedTitle and `LEVEL {profile.level}  •  {string.upper(equippedTitle.name)}` or `LEVEL {profile.level}`
 			local nextXp = ProgressionConfig.xpForLevel(profile.level + 1)
 			local prevXp = ProgressionConfig.xpForLevel(profile.level)
 			local progress = 0
@@ -1002,8 +1086,9 @@ function MainMenu.start()
 
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
 		if event == "Victory" or event == "Defeat" then
-			showResults(event == "Victory", (data and data.restartIn) or 10, data and data.ratingDelta, data and data.xpData, data and data.coins, data and data.firstClear)
+			showResults(event == "Victory", (data and data.decisionIn) or 30, data and data.ratingDelta, data and data.xpData, data and data.coins, data and data.firstClear, data and data.dailyWarBonds, data and data.canNextStage)
 		elseif event == "MatchStart" then
+			resultWaitingRematch = false
 			matchStartAt = os.clock()
 			results.Visible = false
 			closePanels()
@@ -1011,6 +1096,11 @@ function MainMenu.start()
 			menuOpen = false
 			stopOrbit()
 			GameUI.setHudVisible(true)
+		elseif event == "RematchStatus" and data then
+			resultRematchReady = data.ready or 0
+			resultCountdown.Text = `Rematch ready: {resultRematchReady}/{data.required or 2} players`
+		elseif event == "ReturnError" and data then
+			resultCountdown.Text = data.message or "Couldn't return to the lobby. Press Return to retry."
 		elseif event == "ReturnToMenu" then
 			results.Visible = false
 			closePanels()

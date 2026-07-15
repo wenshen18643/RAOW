@@ -6,9 +6,10 @@
 
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
+local MonetizationConfig = require(ReplicatedStorage.Shared.Config.MonetizationConfig)
+local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Leaderboard = require(script.Parent.Leaderboard)
 
@@ -23,7 +24,6 @@ export type PlayerProfile = {
 	losses: number,
 	totalKills: number,
 	rating: number,
-	unlockedSkins: { string },
 	level: number,
 	xp: number,
 	tutorialDone: boolean,
@@ -31,17 +31,31 @@ export type PlayerProfile = {
 	pveLevel: number,
 	pveUpgrades: { unitHp: number, unitDamage: number, startingGold: number },
 	pvePerks: { string },
+	warBonds: number,
+	ownedCosmetics: { string },
+	equippedTitle: string,
+	equippedTheme: string,
+	lastDailyBondDay: number,
+	lastDailyBattleDay: number,
+	lastDailyWinDay: number,
+	processedReceipts: { string },
+	settings: {
+		mouseSensitivity: number,
+		sfxVolume: number,
+		uiVolume: number,
+		reducedEffects: boolean,
+		showDamageNumbers: boolean,
+	},
 }
 
 -- Returns a fresh default profile.
 local function defaultProfile(): PlayerProfile
 	return {
-		schemaVersion = 4,
+		schemaVersion = 8,
 		wins = 0,
 		losses = 0,
 		totalKills = 0,
 		rating = 1000,
-		unlockedSkins = {},
 		level = 1,
 		xp = 0,
 		tutorialDone = false,
@@ -49,12 +63,28 @@ local function defaultProfile(): PlayerProfile
 		pveLevel = 0,
 		pveUpgrades = { unitHp = 0, unitDamage = 0, startingGold = 0 },
 		pvePerks = {},
+		warBonds = 0,
+		ownedCosmetics = {},
+		equippedTitle = "",
+		equippedTheme = "",
+		lastDailyBondDay = -1,
+		lastDailyBattleDay = -1,
+		lastDailyWinDay = -1,
+		processedReceipts = {},
+		settings = {
+			mouseSensitivity = 0.35,
+			sfxVolume = 1,
+			uiVolume = 1,
+			reducedEffects = false,
+			showDamageNumbers = true,
+		},
 	}
 end
 
 -- In-memory cache: Player → profile
 local cache: { [Player]: PlayerProfile } = {}
 local saving: { [Player]: boolean } = {}
+local saveRequested: { [Player]: boolean } = {}
 
 -- Reference to the DataStore (nil in Studio when DataStores are disabled)
 local store: DataStore? = nil
@@ -103,21 +133,67 @@ function PlayerData.load(player: Player)
 		profile.losses = result.losses or 0
 		profile.totalKills = result.totalKills or 0
 		profile.rating = math.clamp(tonumber(result.rating) or 1000, 0, 5000)
-		if result.unlockedSkins and typeof(result.unlockedSkins) == "table" then
-			profile.unlockedSkins = result.unlockedSkins
-		end
 		profile.level = math.clamp(math.floor(tonumber(result.level) or 1), 1, ProgressionConfig.MAX_LEVEL)
 		profile.xp = math.max(tonumber(result.xp) or 0, 0)
 		profile.tutorialDone = result.tutorialDone == true
 		profile.coins = math.max(tonumber(result.coins) or 0, 0)
-		profile.pveLevel = math.max(math.floor(tonumber(result.pveLevel) or 0), 0)
+		profile.pveLevel = math.clamp(math.floor(tonumber(result.pveLevel) or 0), 0, PvELevels.MAX_LEVEL)
 		if result.pveUpgrades and typeof(result.pveUpgrades) == "table" then
-			profile.pveUpgrades.unitHp = result.pveUpgrades.unitHp or 0
-			profile.pveUpgrades.unitDamage = result.pveUpgrades.unitDamage or 0
-			profile.pveUpgrades.startingGold = result.pveUpgrades.startingGold or 0
+			profile.pveUpgrades.unitHp = math.clamp(math.floor(tonumber(result.pveUpgrades.unitHp) or 0), 0, 10)
+			profile.pveUpgrades.unitDamage = math.clamp(math.floor(tonumber(result.pveUpgrades.unitDamage) or 0), 0, 10)
+			profile.pveUpgrades.startingGold = math.clamp(math.floor(tonumber(result.pveUpgrades.startingGold) or 0), 0, 8)
 		end
 		if result.pvePerks and typeof(result.pvePerks) == "table" then
 			profile.pvePerks = result.pvePerks
+		end
+		profile.warBonds = math.max(math.floor(tonumber(result.warBonds) or 0), 0)
+		if result.ownedCosmetics and typeof(result.ownedCosmetics) == "table" then
+			for _, cosmeticId in result.ownedCosmetics do
+				if typeof(cosmeticId) == "string"
+					and MonetizationConfig.cosmeticById(cosmeticId)
+					and not table.find(profile.ownedCosmetics, cosmeticId) then
+					table.insert(profile.ownedCosmetics, cosmeticId)
+				end
+			end
+		end
+		if typeof(result.equippedTitle) == "string" and #result.equippedTitle <= 64 then
+			profile.equippedTitle = result.equippedTitle
+		end
+		if typeof(result.equippedTheme) == "string" and #result.equippedTheme <= 64 then
+			profile.equippedTheme = result.equippedTheme
+		end
+		profile.lastDailyBondDay = math.floor(tonumber(result.lastDailyBondDay) or -1)
+		profile.lastDailyBattleDay = math.floor(tonumber(result.lastDailyBattleDay) or -1)
+		profile.lastDailyWinDay = math.floor(tonumber(result.lastDailyWinDay) or -1)
+		if result.processedReceipts and typeof(result.processedReceipts) == "table" then
+			for _, receiptId in result.processedReceipts do
+				if typeof(receiptId) == "string" and #receiptId <= 128 then
+					table.insert(profile.processedReceipts, receiptId)
+					if #profile.processedReceipts >= 50 then break end
+				end
+			end
+		end
+		if result.settings and typeof(result.settings) == "table" then
+			profile.settings.mouseSensitivity = math.clamp(tonumber(result.settings.mouseSensitivity) or 0.35, 0, 1)
+			profile.settings.sfxVolume = math.clamp(tonumber(result.settings.sfxVolume) or 1, 0, 1)
+			profile.settings.uiVolume = math.clamp(tonumber(result.settings.uiVolume) or 1, 0, 1)
+			profile.settings.reducedEffects = result.settings.reducedEffects == true
+			profile.settings.showDamageNumbers = result.settings.showDamageNumbers ~= false
+		end
+		-- Reconcile deterministic level rewards for old and new profiles.
+		for level, reward in ProgressionConfig.Ladder do
+			if level <= profile.level and reward.type == "Title" and not table.find(profile.ownedCosmetics, reward.id) then
+				table.insert(profile.ownedCosmetics, reward.id)
+			end
+		end
+		if profile.equippedTitle ~= "" and not table.find(profile.ownedCosmetics, profile.equippedTitle) then
+			profile.equippedTitle = ""
+		end
+		local equippedTitle = MonetizationConfig.cosmeticById(profile.equippedTitle)
+		if equippedTitle and equippedTitle.kind == "theme" then profile.equippedTitle = "" end
+		if profile.equippedTheme ~= "" and (not table.find(profile.ownedCosmetics, profile.equippedTheme)
+			or not MonetizationConfig.themeById(profile.equippedTheme)) then
+			profile.equippedTheme = ""
 		end
 		cache[player] = profile
 	else
@@ -132,7 +208,11 @@ end
 -- Does nothing if no cached profile exists.
 function PlayerData.save(player: Player): boolean
 	local profile = cache[player]
-	if not profile or saving[player] then
+	if not profile then
+		return false
+	end
+	if saving[player] then
+		saveRequested[player] = true
 		return false
 	end
 	saving[player] = true
@@ -157,6 +237,8 @@ function PlayerData.save(player: Player): boolean
 		if attempt < 3 then task.wait(0.5 * attempt) end
 	end
 	saving[player] = nil
+	local shouldSaveAgain = saveRequested[player] == true
+	saveRequested[player] = nil
 
 	if not ok then
 		warn("[PlayerData] Failed to save profile for " .. player.Name .. ": " .. tostring(err))
@@ -165,6 +247,9 @@ function PlayerData.save(player: Player): boolean
 		if profile.pveLevel > 0 then
 			Leaderboard.submitPveLevel(player.UserId, profile.pveLevel)
 		end
+	end
+	if shouldSaveAgain and cache[player] and player.Parent then
+		task.defer(function() PlayerData.save(player) end)
 	end
 	return ok
 end
@@ -199,9 +284,9 @@ function PlayerData.addKills(player: Player, count: number)
 end
 
 -- Add XP and handle level ups
-function PlayerData.addXp(player: Player, amount: number): {oldXp: number, newXp: number, levelups: number, unlocks: {string}}
+function PlayerData.addXp(player: Player, amount: number): {oldXp: number, newXp: number, levelups: number, unlocks: {string}, warBondsEarned: number}
 	local profile = cache[player]
-	if not profile then return {oldXp = 0, newXp = 0, levelups = 0, unlocks = {}} end
+	if not profile then return {oldXp = 0, newXp = 0, levelups = 0, unlocks = {}, warBondsEarned = 0} end
 	
 	local oldXp = profile.xp
 	local newXp = profile.xp + amount
@@ -209,17 +294,20 @@ function PlayerData.addXp(player: Player, amount: number): {oldXp: number, newXp
 	
 	local levelups = 0
 	local unlocks = {}
+	local warBondsEarned = 0
 	
 	while profile.level < ProgressionConfig.MAX_LEVEL do
 		local req = ProgressionConfig.xpForLevel(profile.level + 1)
 		if newXp >= req then
 			profile.level += 1
 			levelups += 1
+			profile.warBonds += ProgressionConfig.WAR_BONDS_PER_LEVEL
+			warBondsEarned += ProgressionConfig.WAR_BONDS_PER_LEVEL
 			local reward = ProgressionConfig.Ladder[profile.level]
 			if reward then
 				table.insert(unlocks, reward.name)
-				if reward.type == "Skin" and not table.find(profile.unlockedSkins, reward.id) then
-					table.insert(profile.unlockedSkins, reward.id)
+				if reward.type == "Title" and not table.find(profile.ownedCosmetics, reward.id) then
+					table.insert(profile.ownedCosmetics, reward.id)
 				end
 			end
 		else
@@ -227,7 +315,7 @@ function PlayerData.addXp(player: Player, amount: number): {oldXp: number, newXp
 		end
 	end
 	
-	return {oldXp = oldXp, newXp = newXp, levelups = levelups, unlocks = unlocks}
+	return {oldXp = oldXp, newXp = newXp, levelups = levelups, unlocks = unlocks, warBondsEarned = warBondsEarned}
 end
 
 function PlayerData.addCoins(player: Player, amount: number)
@@ -261,8 +349,112 @@ end
 function PlayerData.sync(player: Player)
 	local profile = cache[player]
 	if profile then
-		Remotes.ProfileSync:FireClient(player, profile)
+		local title = MonetizationConfig.cosmeticById(profile.equippedTitle)
+		player:SetAttribute("CommanderTitle", title and title.name or "")
+		player:SetAttribute("ArmyTheme", profile.equippedTheme)
+		local publicProfile: any = table.clone(profile)
+		publicProfile.processedReceipts = nil
+		Remotes.ProfileSync:FireClient(player, publicProfile)
 	end
+end
+
+function PlayerData.claimDailyBonds(player: Player): (boolean, number)
+	local profile = cache[player]
+	if not profile then return false, 0 end
+	local utcDay = math.floor(os.time() / 86400)
+	if profile.lastDailyBondDay == utcDay then return false, 0 end
+	profile.lastDailyBondDay = utcDay
+	local amount = MonetizationConfig.DAILY_WAR_BONDS
+	if table.find(profile.ownedCosmetics, MonetizationConfig.SupporterCosmetic.id) then
+		amount += MonetizationConfig.SUPPORTER_DAILY_BONUS
+	end
+	profile.warBonds += amount
+	return true, amount
+end
+
+function PlayerData.recordDailyBattle(player: Player, won: boolean): number
+	local profile = cache[player]
+	if not profile then return 0 end
+	local utcDay = math.floor(os.time() / 86400)
+	local amount = 0
+	if profile.lastDailyBattleDay ~= utcDay then
+		profile.lastDailyBattleDay = utcDay
+		amount += MonetizationConfig.DAILY_BATTLE_BONDS
+	end
+	if won and profile.lastDailyWinDay ~= utcDay then
+		profile.lastDailyWinDay = utcDay
+		amount += MonetizationConfig.DAILY_WIN_BONDS
+	end
+	profile.warBonds += amount
+	return amount
+end
+
+function PlayerData.updateSetting(player: Player, key: string, value: any): boolean
+	local profile = cache[player]
+	if not profile then return false end
+	if key == "mouseSensitivity" or key == "sfxVolume" or key == "uiVolume" then
+		if typeof(value) ~= "number" or value ~= value then return false end
+		(profile.settings :: any)[key] = math.clamp(value, 0, 1)
+		return true
+	elseif key == "reducedEffects" or key == "showDamageNumbers" then
+		if typeof(value) ~= "boolean" then return false end
+		(profile.settings :: any)[key] = value
+		return true
+	end
+	return false
+end
+
+function PlayerData.buyCosmetic(player: Player, cosmeticId: string): boolean
+	local profile = cache[player]
+	local cosmetic = MonetizationConfig.cosmeticById(cosmeticId)
+	if not profile or not cosmetic or not cosmetic.cost then return false end
+	if table.find(profile.ownedCosmetics, cosmeticId) then return false end
+	if profile.warBonds < cosmetic.cost then return false end
+	profile.warBonds -= cosmetic.cost
+	table.insert(profile.ownedCosmetics, cosmeticId)
+	if cosmetic.kind == "theme" then
+		profile.equippedTheme = cosmeticId
+	else
+		profile.equippedTitle = cosmeticId
+	end
+	return true
+end
+
+function PlayerData.grantCosmetic(player: Player, cosmeticId: string): boolean
+	local profile = cache[player]
+	if not profile or not MonetizationConfig.cosmeticById(cosmeticId) then return false end
+	if not table.find(profile.ownedCosmetics, cosmeticId) then table.insert(profile.ownedCosmetics, cosmeticId) end
+	return true
+end
+
+function PlayerData.equipCosmetic(player: Player, cosmeticId: string): boolean
+	local profile = cache[player]
+	local cosmetic = MonetizationConfig.cosmeticById(cosmeticId)
+	if not profile or not cosmetic or not table.find(profile.ownedCosmetics, cosmeticId) then return false end
+	if cosmetic.kind == "theme" then
+		profile.equippedTheme = cosmeticId
+	else
+		profile.equippedTitle = cosmeticId
+	end
+	return true
+end
+
+function PlayerData.grantProductReceipt(player: Player, receiptId: string, amount: number): boolean
+	local profile = cache[player]
+	if not profile then return false end
+	if table.find(profile.processedReceipts, receiptId) then return true end
+	local timeout = os.clock() + 10
+	while saving[player] and os.clock() < timeout do task.wait(0.1) end
+	if saving[player] then return false end
+	local oldBonds = profile.warBonds
+	table.insert(profile.processedReceipts, receiptId)
+	while #profile.processedReceipts > 50 do table.remove(profile.processedReceipts, 1) end
+	profile.warBonds += math.max(math.floor(amount), 0)
+	if PlayerData.save(player) then return true end
+	profile.warBonds = oldBonds
+	local index = table.find(profile.processedReceipts, receiptId)
+	if index then table.remove(profile.processedReceipts, index) end
+	return false
 end
 
 -- Clients request a sync once their listener is connected; the join-time sync
@@ -279,6 +471,7 @@ function PlayerData.unload(player: Player)
 	PlayerData.save(player)
 	cache[player] = nil
 	saving[player] = nil
+	saveRequested[player] = nil
 end
 
 -- Applies one idempotent match result to both loaded profiles. The caller owns
@@ -297,9 +490,18 @@ function PlayerData.recordMatch(winner: Player, loser: Player): (number, number)
 end
 
 game:BindToClose(function()
+	local pending = 0
 	for _, player in Players:GetPlayers() do
-		PlayerData.save(player)
+		pending += 1
+		task.spawn(function()
+			local timeout = os.clock() + 20
+			while saving[player] and os.clock() < timeout do task.wait(0.1) end
+			PlayerData.save(player)
+			pending -= 1
+		end)
 	end
+	local timeout = os.clock() + 25
+	while pending > 0 and os.clock() < timeout do task.wait(0.1) end
 end)
 
 -- Periodic auto-save: every AUTO_SAVE_INTERVAL seconds, save all online players.

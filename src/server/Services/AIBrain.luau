@@ -22,6 +22,13 @@ local rng = Random.new()
 
 local aiState = setmetatable({}, { __mode = "k" })
 
+function AIBrain.findNewBossCandidate(units: { Match.UnitRecord }, unitId: string, existing: { [Match.UnitRecord]: boolean }): Match.UnitRecord?
+	for _, rec in units do
+		if rec.def.id == unitId and not existing[rec] and not (rec :: any).isBoss then return rec end
+	end
+	return nil
+end
+
 local ROLE_WEIGHTS = {
 	{ role = "melee", w = 0.45 },
 	{ role = "ranged", w = 0.35 },
@@ -33,7 +40,7 @@ local COUNTER_ROLE: { [string]: string } = {
 	melee = "ranged",
 	ranged = "heavy",
 	heavy = "melee",
-	super_heavy = "super_heavy", -- no clean counter, meet force with force
+	super_heavy = "melee", -- cost-efficient melee swarms punish the elite unit's slot efficiency
 }
 
 local function getDominantPlayerRole(match: Match.Match): string?
@@ -97,7 +104,6 @@ local function rebuildTurretsForNewAge(match: Match.Match)
 	for slot = 1, GameConfig.TURRET_SLOTS do
 		local turret = s.turrets[slot]
 		if turret and turret.def.age < s.age then
-			TurretSystem.trySell(match, SIDE, slot)
 			TurretSystem.tryBuild(match, SIDE, slot, false)
 		end
 	end
@@ -144,6 +150,10 @@ function AIBrain.tick(match: Match.Match)
 					local bossDef = table.clone(def)
 					bossDef.hp = math.floor(def.hp * bossConf.hpMult)
 					bossDef.damage = math.floor(def.damage * bossConf.damageMult)
+					local existingCandidates: { [Match.UnitRecord]: boolean } = {}
+					for _, rec in s.units do
+						if rec.def.id == bossConf.unitId then existingCandidates[rec] = true end
+					end
 					
 					-- Inject directly into the front of the queue: popQueue doesn't gate
 					-- on cost or age, so the AI's own age/economy stay untouched.
@@ -157,12 +167,7 @@ function AIBrain.tick(match: Match.Match)
 						for i = 1, 40 do
 							task.wait(0.5)
 							if match.status ~= "Active" then return end
-							for _, rec in s.units do
-								if rec.def.id == bossConf.unitId and not (rec :: any).isBoss then
-									bossRec = rec
-									break
-								end
-							end
+							bossRec = AIBrain.findNewBossCandidate(s.units, bossConf.unitId, existingCandidates)
 							if bossRec then break end
 						end
 						
@@ -178,34 +183,39 @@ function AIBrain.tick(match: Match.Match)
 								while not bossRec.dead and match.status == "Active" do
 									task.wait(bossConf.slamCooldown)
 									if bossRec.dead or match.status ~= "Active" then break end
-									
-									-- Slam effect
-									Remotes.FX:FireAllClients("ImpactVFX", { pos = bossRec.body.Position, age = 5 })
+
 									local slamPos = bossRec.body.Position
-									
-									-- Find all player units and hero in radius
+									Remotes.FX:FireAllClients("BossSlamWarning", {
+										pos = slamPos,
+										radius = bossConf.slamRadius,
+										duration = bossConf.slamTelegraphDuration,
+									})
+									task.wait(bossConf.slamTelegraphDuration)
+									if bossRec.dead or match.status ~= "Active" then break end
+									Remotes.FX:FireAllClients("ImpactVFX", { pos = slamPos, age = 5 })
+									local rawSlamDamage = bossRec.scaledDamage * bossConf.slamDamageMult
+
 									local enemySide = Match.enemyOf(SIDE)
 									for _, enemyRec in match.sides[enemySide].units do
 										if not enemyRec.dead and (enemyRec.body.Position - slamPos).Magnitude <= bossConf.slamRadius then
-											UnitSim.damageUnit(match, enemyRec, bossRec.scaledDamage * 1.5, SIDE, false)
-											-- Brief stun: push the unit's next attack window out
+											local damage = math.min(rawSlamDamage, enemyRec.maxHp * bossConf.slamMaxUnitHpRatio)
+											UnitSim.damageUnit(match, enemyRec, damage, SIDE, false)
+											-- Brief stun: push the unit's next attack window out.
 											enemyRec.nextAttackAt = os.clock() + bossConf.slamStunDuration
 										end
 									end
-									
-									-- Hit hero
+
 									for _, p in game:GetService("Players"):GetPlayers() do
 										if p:GetAttribute("Side") == enemySide and p.Character then
-											local hrp = p.Character:FindFirstChild("HumanoidRootPart")
-											local hum = p.Character:FindFirstChild("Humanoid")
+											local hrp = p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+											local hum = p.Character:FindFirstChildOfClass("Humanoid")
 											if hrp and hum and hum.Health > 0 and (hrp.Position - slamPos).Magnitude <= bossConf.slamRadius then
-												hum:TakeDamage(bossRec.scaledDamage * 1.5)
-												-- knockback
-												local bv = Instance.new("BodyVelocity")
-												bv.Velocity = ((hrp.Position - slamPos).Unit + Vector3.new(0, 0.5, 0)).Unit * 50
-												bv.MaxForce = Vector3.new(1,1,1) * 100000
-												bv.Parent = hrp
-												game:GetService("Debris"):AddItem(bv, 0.2)
+												local heroDamage = Match.reduceHeroDamage(match, enemySide, math.min(rawSlamDamage, hum.MaxHealth * bossConf.slamMaxHeroHpRatio))
+												hum:TakeDamage(heroDamage)
+												local away = hrp.Position - slamPos
+												local flatAway = Vector3.new(away.X, 0, away.Z)
+												local knockDir = flatAway.Magnitude > 0.1 and flatAway.Unit or Vector3.new(0, 0, 1)
+												hrp.AssemblyLinearVelocity += knockDir * 36 + Vector3.new(0, 18, 0)
 											end
 										end
 									end

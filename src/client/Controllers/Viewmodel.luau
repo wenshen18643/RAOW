@@ -11,6 +11,7 @@ local Debris = game:GetService("Debris")
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HeroWeapons = require(ReplicatedStorage.Shared.Config.HeroWeapons)
+local Settings = require(script.Parent.Settings)
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
 
 local Viewmodel = {}
@@ -229,12 +230,14 @@ function Viewmodel.setAge(age: number)
 	if cam then
 		vmModel.Parent = cam
 	end
-	-- brief age-up flash tint
-	for _, p in vmModel:GetDescendants() do
-		if p:IsA("BasePart") and p.Transparency < 0.9 then
-			local orig = p.Color
-			p.Color = Ages[age].color:Lerp(Color3.new(1, 1, 1), 0.5)
-			TweenService:Create(p, TweenInfo.new(0.25), { Color = orig }):Play()
+	-- brief age-up tint unless reduced effects is enabled
+	if not Settings.get("reducedEffects") then
+		for _, p in vmModel:GetDescendants() do
+			if p:IsA("BasePart") and p.Transparency < 0.9 then
+				local orig = p.Color
+				p.Color = Ages[age].color:Lerp(Color3.new(1, 1, 1), 0.5)
+				TweenService:Create(p, TweenInfo.new(0.25), { Color = orig }):Play()
+			end
 		end
 	end
 end
@@ -247,17 +250,12 @@ function Viewmodel.playFire()
 	local weapon = HeroWeapons[currentAge]
 	if weapon and weapon.kind == "melee" then
 		swingStart = os.clock()
-		swingKind = "slash"
+		swingKind = currentAge == 2 and "thrust" or "slash"
 		return
-	end
-	if currentAge == 2 then
-		-- spear: hitscan but animated as a thrust
-		swingStart = os.clock()
-		swingKind = "thrust"
 	end
 	recoilStrength = 1
 	-- muzzle flash + light for guns
-	if currentAge >= 4 then
+	if currentAge >= 4 and not Settings.get("reducedEffects") then
 		local flash = Instance.new("Part")
 		flash.Shape = Enum.PartType.Ball
 		flash.Size = Vector3.one * (currentAge == 5 and 0.5 or 0.35)

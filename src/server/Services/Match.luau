@@ -31,6 +31,8 @@ export type UnitRecord = {
 	laneOffset: number,
 	moveHeading: Vector3,
 	walkStart: number?, -- timestamp when unit started walking (for walk bob anim)
+	targetCache: any?, -- refreshed periodically by UnitSim to avoid full target scans every frame
+	targetRefreshAt: number?,
 }
 
 export type TurretRecord = {
@@ -41,7 +43,6 @@ export type TurretRecord = {
 }
 
 export type ProjectileRecord = {
-	id: string,
 	pos: Vector3,
 	dir: Vector3,
 	speed: number,
@@ -115,6 +116,12 @@ function Match.getBaseMaxHp(match: Match, side: string): number
 	return GameConfig.BASE_MAX_HP * GameConfig.BASE_HP_MULT_BY_AGE[age]
 end
 
+function Match.reduceHeroDamage(match: Match, side: string, amount: number): number
+	local s = match.sides[side]
+	local defenseLevel = (s and s.heroUpgrades and s.heroUpgrades.def) or 0
+	return amount * (1 - math.min(0.50, 0.10 * defenseLevel))
+end
+
 function Match.getIncomeRate(match: Match, side: string): number
 	local s = match.sides[side]
 	local enemySide = Match.enemyOf(side)
@@ -122,7 +129,8 @@ function Match.getIncomeRate(match: Match, side: string): number
 	local selfMax = Match.getBaseMaxHp(match, side)
 	local selfRatio = (match.map.bases[side].core:GetAttribute("Hp") :: number) / selfMax
 	local enemyRatio = (match.map.bases[enemySide].core:GetAttribute("Hp") :: number) / enemyMax
-	local comeback = math.max(0, enemyRatio - selfRatio) * GameConfig.COMEBACK_INCOME_MAX
+	local baseIncome = GameConfig.PASSIVE_INCOME_BY_AGE[s.age]
+	local comeback = math.max(0, enemyRatio - selfRatio) * baseIncome * GameConfig.COMEBACK_INCOME_RATIO
 	local elapsed = os.clock() - match.startedAt
 	local mult = 1
 	if elapsed >= GameConfig.SUDDEN_DEATH_START then
@@ -130,7 +138,7 @@ function Match.getIncomeRate(match: Match, side: string): number
 	elseif elapsed >= GameConfig.ESCALATION_START then
 		mult = GameConfig.ESCALATION_INCOME_MULT
 	end
-	local rate = (GameConfig.PASSIVE_INCOME_BY_AGE[s.age] + comeback) * mult
+	local rate = (baseIncome + comeback) * mult
 	-- PvE Levels: the AI's gold production scales with the level.
 	if match.mode == "PvE-Levels" and side == "B" then
 		rate *= PvELevels.difficultyForLevel(match.pveLevel or 1).aiIncomeMult
@@ -180,17 +188,6 @@ end
 
 function Match.enemyOf(side: string): string
 	return side == "A" and "B" or "A"
-end
-
--- Gold + XP reward for general fallback (kept for backward compatibility).
-function Match.award(match: Match, side: string, amount: number, isHeroKill: boolean?)
-	if match.status ~= "Active" then
-		return
-	end
-	local mult = isHeroKill and GameConfig.HERO_KILL_BONUS_MULT or 1
-	local s = match.sides[side]
-	s.gold += math.floor(amount * mult)
-	s.xp += math.floor(amount * mult)
 end
 
 -- Awards gold and XP for a unit kill. Hero kills multiply both by the bonus multiplier.
@@ -266,14 +263,6 @@ function Match.tryEvolve(match: Match, side: string, bypassXp: boolean?): boolea
 	local TurretSystem = require(script.Parent.TurretSystem)
 	TurretSystem.remountTurrets(match, side)
 	
-	if (match.mode == "PvE" or match.mode == "PvE-Levels") and side == "B" then
-		local mDef = Units.byId[`age{s.age}_melee`]
-		local rDef = Units.byId[`age{s.age}_ranged`]
-		if mDef and rDef then
-			s.gold += 2 * (mDef.cost + rDef.cost)
-		end
-	end
-
 	if match.onAgeUp then
 		match.onAgeUp(side, s.age)
 	end
@@ -285,7 +274,11 @@ function Match.damageBase(match: Match, side: string, amount: number, killerSide
 		return
 	end
 	local core = match.map.bases[side].core
-	local scaledAmount = amount * GameConfig.BASE_DAMAGE_MULT
+	local elapsed = os.clock() - match.startedAt
+	local paceDamageMult = if elapsed >= GameConfig.SUDDEN_DEATH_START then GameConfig.SUDDEN_DEATH_BASE_DAMAGE_MULT
+		elseif elapsed >= GameConfig.ESCALATION_START then GameConfig.ESCALATION_BASE_DAMAGE_MULT
+		else 1
+	local scaledAmount = amount * GameConfig.BASE_DAMAGE_MULT * paceDamageMult
 	local hp = math.max(0, (core:GetAttribute("Hp") :: number) - scaledAmount)
 	core:SetAttribute("Hp", hp)
 	-- Small XP drip for hitting the base (no gold, prevents farming)
@@ -311,8 +304,20 @@ function Match.buildSnapshot(match: Match, playerSide: string): { [string]: any 
 	local turretInfo = {}
 	for i = 1, GameConfig.TURRET_SLOTS do
 		local t = s.turrets[i]
-		turretInfo[i] = t ~= nil and t.def.name or false
+		turretInfo[i] = t ~= nil and {
+			name = t.def.name,
+			age = t.def.age,
+			sellValue = math.floor(t.def.cost * GameConfig.TURRET_SELL_REFUND),
+		} or false
 	end
+	local roleCounts: { [string]: number } = { melee = 0, ranged = 0, heavy = 0, super_heavy = 0 }
+	for _, unit in s.units do
+		if not unit.dead then roleCounts[unit.def.role] = (roleCounts[unit.def.role] or 0) + 1 end
+	end
+	local elapsed = math.max(0, os.clock() - match.startedAt)
+	local pacePhase = if elapsed >= GameConfig.SUDDEN_DEATH_START then "Sudden Death"
+		elseif elapsed >= GameConfig.ESCALATION_START then "Escalation"
+		else "Standard"
 	return {
 		gold = s.gold,
 		xp = s.xp,
@@ -340,7 +345,10 @@ function Match.buildSnapshot(match: Match, playerSide: string): { [string]: any 
 		pveUpgrades = s.pveUpgrades,
 		pvePerks = s.pvePerks,
 		doctrine = s.doctrine,
+		roleCounts = roleCounts,
 		playerSide = playerSide,
+		matchElapsed = elapsed,
+		pacePhase = pacePhase,
 	}
 end
 

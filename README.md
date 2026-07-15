@@ -60,3 +60,4 @@ Then open `build.rbxl` in Roblox Studio.
 - `build.rbxl` is generated and should not be committed.
 - `tools/rojo.exe` is optional. If you commit it, other Windows devs can build without installing Rojo globally.
 - See [PRODUCTION.md](PRODUCTION.md) for the PvP deployment topology and mandatory release gates.
+- Cosmetic commerce is disabled by default; configure published product IDs using the production guide. Paid offers never affect combat power.

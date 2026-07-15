@@ -20,13 +20,15 @@ local lastPlayed: { [string]: number } = {} -- throttle per sound name
 
 local THROTTLE = 0.04 -- min seconds between plays of the same sound
 local MAX_DISTANCE = 220
+local MAX_POSITIONAL_SOUNDS = 18
+local activePositionalSounds = 0
 
 local function getGroup(name: string): SoundGroup
 	local g = groups[name]
 	if not g then
 		g = Instance.new("SoundGroup")
 		g.Name = name
-		g.Volume = name == "Music" and 0.5 or 1
+		g.Volume = 1
 		g.Parent = SoundService
 		groups[name] = g
 	end
@@ -73,6 +75,7 @@ function Audio.playAt(name: string, pos: Vector3)
 	if cam and (cam.CFrame.Position - pos).Magnitude > MAX_DISTANCE then
 		return
 	end
+	if activePositionalSounds >= MAX_POSITIONAL_SOUNDS then return end
 	local s = makeSound(name)
 	if not s then
 		return
@@ -85,8 +88,17 @@ function Audio.playAt(name: string, pos: Vector3)
 	holder.Position = pos
 	holder.Parent = workspace.Terrain
 	s.Parent = holder
+	activePositionalSounds += 1
+	local released = false
+	local function release()
+		if released then return end
+		released = true
+		activePositionalSounds = math.max(0, activePositionalSounds - 1)
+	end
+	holder.Destroying:Connect(release)
 	s:Play()
 	s.Ended:Once(function()
+		release()
 		holder:Destroy()
 	end)
 	Debris:AddItem(holder, 6)
@@ -125,7 +137,6 @@ function Audio.start()
 	-- pre-create groups so the settings UI can read them immediately
 	getGroup("SFX")
 	getGroup("UI")
-	getGroup("Music")
 
 	-- unit animation hooks (fires exactly when the swing anim starts)
 	UnitAnimator.onUnitAttack = unitAttackSound

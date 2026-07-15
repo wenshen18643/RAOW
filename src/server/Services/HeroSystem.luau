@@ -90,6 +90,7 @@ function HeroSystem.buyUpgrade(match: Match.Match, player: Player, stat: string)
 	local s = match.sides[side]
 	local level = (s.heroUpgrades :: any)[stat]
 	if type(level) ~= "number" then return end
+	if level >= GameConfig.HERO_UPGRADE_MAX_TIER then return end
 	
 	local cost = 500 * (2 ^ level)
 	if s.gold >= cost then
@@ -101,7 +102,7 @@ function HeroSystem.buyUpgrade(match: Match.Match, player: Player, stat: string)
 	end
 end
 
--- Hook character lifecycle for the (single) player.
+-- Hook one player's character lifecycle; called once for each assigned side.
 -- Takes a getter so the binding survives match restarts.
 function HeroSystem.bindPlayer(getMatch: () -> Match.Match, player: Player)
 	local function onCharacter(char: Model)
@@ -184,10 +185,7 @@ local function processHit(
 		local targetSide = model:GetAttribute("Side")
 		local hum = model:FindFirstChildOfClass("Humanoid")
 		if targetSide ~= s.side and hum and hum.Health > 0 then
-			local targetState = match.sides[targetSide]
-			local defense = targetState and targetState.heroUpgrades.def or 0
-			local multiplier = 1 - math.min(0.5, defense * 0.1)
-			hum:TakeDamage(finalDamage * multiplier)
+			hum:TakeDamage(Match.reduceHeroDamage(match, targetSide, finalDamage))
 			return true
 		end
 	end

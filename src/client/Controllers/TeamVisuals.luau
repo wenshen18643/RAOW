@@ -1,19 +1,31 @@
 --!strict
 -- Applies local-perspective ally/enemy colors to replicated unit models.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MonetizationConfig = require(ReplicatedStorage.Shared.Config.MonetizationConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local TeamVisuals = {}
 local localSide: string? = nil
 local ALLY = Color3.fromRGB(65, 155, 255)
 local ENEMY = Color3.fromRGB(255, 75, 65)
 
+local function allyColor(): Color3
+	local themeId = Players.LocalPlayer:GetAttribute("ArmyTheme")
+	local theme = typeof(themeId) == "string" and MonetizationConfig.themeById(themeId) or nil
+	return theme and theme.color or ALLY
+end
+
 local function updateBody(body: BasePart)
 	local side = body:GetAttribute("Side")
 	if not localSide or typeof(side) ~= "string" then return end
 	local allied = side == localSide
-	local color = allied and ALLY or ENEMY
+	local color = allied and allyColor() or ENEMY
 	local model = body:FindFirstAncestorOfClass("Model")
+	if model and allied then
+		local stripe = model:FindFirstChild("Stripe", true)
+		if stripe and stripe:IsA("BasePart") then stripe.Color = color end
+	end
 	local highlight = model and model:FindFirstChild("TeamOutline") :: Highlight?
 	if highlight then
 		highlight.FillColor = color
@@ -23,7 +35,9 @@ local function updateBody(body: BasePart)
 	local teamLabel = hpBar and hpBar:FindFirstChild("TeamLabel", true) :: TextLabel?
 	if teamLabel then
 		local role = string.upper((body:GetAttribute("Role") :: string?) or "UNIT")
-		teamLabel.Text = allied and `ALLY  {role}` or `ENEMY  {role}`
+		local commanderTitle = body:GetAttribute("CommanderTitle")
+		local titleText = typeof(commanderTitle) == "string" and commanderTitle ~= "" and `  [{string.upper(commanderTitle)}]` or ""
+		teamLabel.Text = (allied and `ALLY{titleText}  {role}` or `ENEMY{titleText}  {role}`)
 		teamLabel.TextColor3 = color
 	end
 	local fill = hpBar and hpBar:FindFirstChild("Fill", true) :: Frame?
@@ -88,6 +102,7 @@ local function refreshAll()
 end
 
 function TeamVisuals.start()
+	Players.LocalPlayer:GetAttributeChangedSignal("ArmyTheme"):Connect(refreshAll)
 	Remotes.StateUpdate.OnClientEvent:Connect(function(state)
 		if typeof(state) == "table" and state.playerSide ~= localSide then
 			localSide = state.playerSide

@@ -14,20 +14,24 @@ local NAMES = {
 	"FireWeapon", -- (origin: Vector3, direction: Vector3)
 	"FireWeaponSecondary", -- (origin: Vector3, direction: Vector3)
 	"BuyUpgrade", -- (stat: string)
-	"SelectDifficulty", -- (difficultyName: string)
 	"SelectMode", -- (mode: "pve" | "pvp", difficultyName: string?)
-	"LeaveMatch", -- return to a public matchmaking lobby after a result
+	"ResultAction", -- ("replay" | "next" | "menu") explicit post-match choice
 	"RequestProfile", -- () client asks for a ProfileSync once its listener is ready
 	"RequestLeaderboard", -- (boardType: string?) client asks for the current top-rating board
 	"StartPveLevel", -- (level: number) client requests level N
 	"BuyPveUpgrade", -- (trackOrPerkId: string)
+	"ClaimDailyBonds", -- () claim the once-per-UTC-day cosmetic allowance
+	"BuyCosmetic", -- (cosmeticId: string) spend War Bonds
+	"EquipCosmetic", -- (cosmeticId: string) equip an owned commander title
+	"PromptProduct", -- (productKey: string) request a Roblox purchase prompt
+	"PromptSupporterPass", -- () request the optional cosmetic supporter pass
+	"UpdateSettings", -- (key: string, value: number | boolean) persist client preferences
 	-- server -> client
 	"StateUpdate", -- (state: table) periodic HUD snapshot
 	"ProfileSync", -- (profile: table) latest PlayerProfile data
 	"LeaderboardData", -- (boardType: string, rows: {{name: string, rating: number}}) top-rating board
 	"MatchEvent", -- (event: string, data: table?) "MatchStart"|"Victory"|"Defeat"|"AgeUp"|"SpecialFired"|"HeroRespawn"
 	"FX", -- (kind: string, data: table) visual effects broadcast
-	"DifficultySelected", -- (difficultyName: string) broadcasts chosen difficulty
 	"HitConfirm", -- () server-confirmed hit for the attacking player only
 }
 

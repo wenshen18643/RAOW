@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local GameUI = require(script.Parent.GameUI)
@@ -85,12 +86,16 @@ local function createUI()
 	local frame = Instance.new("Frame")
 	frame.AnchorPoint = Vector2.new(0.5, 1)
 	frame.Position = UDim2.new(0.5, 0, 0.82, 0)
-	frame.Size = UDim2.new(0, 420, 0, 64)
+	frame.Size = UDim2.new(0.9, 0, 0, 64)
 	frame.BackgroundColor3 = PANEL
 	frame.BackgroundTransparency = 0.1
 	frame.BorderSizePixel = 0
 	frame.Visible = false
 	frame.Parent = gui
+	local sizeConstraint = Instance.new("UISizeConstraint")
+	sizeConstraint.MinSize = Vector2.new(280, 64)
+	sizeConstraint.MaxSize = Vector2.new(420, 80)
+	sizeConstraint.Parent = frame
 	corner(frame, 10)
 
 	local stroke = Instance.new("UIStroke")
@@ -167,7 +172,9 @@ local function setStep(step: number)
 
 	if not hintLabel then return end
 	if step == 1 then
-		hintLabel.Text = "Press 1 to spawn a Club Man"
+		hintLabel.Text = if UserInputService.TouchEnabled then "Tap the first unit card to recruit a Club Man"
+			elseif UserInputService.GamepadEnabled then "Press D-pad Up to recruit a Club Man"
+			else "Press 1 to recruit a Club Man"
 		pointAt(GameUI.getSlotButton(1))
 	elseif step == 2 then
 		hintLabel.Text = "Kills earn Gold and XP"

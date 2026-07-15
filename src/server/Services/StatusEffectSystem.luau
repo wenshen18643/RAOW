@@ -30,6 +30,18 @@ type ActiveEffect = {
 -- Module-level table of all currently active effects
 local activeEffects: { ActiveEffect } = {}
 
+type ActiveHeroEffect = {
+	effectDef: StatusEffectDef,
+	humanoid: Humanoid,
+	baseDamage: number,
+	endsAt: number,
+	nextTickAt: number,
+}
+
+-- Hero effects use the same refresh-not-stack rule as unit effects. Keeping
+-- them in the simulation avoids creating an unbounded task for every hit.
+local activeHeroEffects: { ActiveHeroEffect } = {}
+
 -- ────────────────────────────────────────────────────────────────────────
 -- apply: attach a status effect to a unit record
 -- ────────────────────────────────────────────────────────────────────────
@@ -120,26 +132,22 @@ function StatusEffectSystem.applyToHero(
 		})
 	end
 
-	-- Spawn an independent task to tick DoT damage on the hero
-	task.spawn(function()
-		local tickDamage = attackerDamage * def.damageRatio
-		local remaining = def.duration
-
-		while remaining > 0 do
-			task.wait(def.interval)
-			remaining -= def.interval
-
-			-- Stop if the humanoid has been destroyed or killed
-			if not humanoid or not humanoid.Parent then
-				break
-			end
-			if humanoid.Health <= 0 then
-				break
-			end
-
-			humanoid:TakeDamage(tickDamage)
+	local now = os.clock()
+	for _, existing in activeHeroEffects do
+		if existing.humanoid == humanoid and existing.effectDef.id == effectId then
+			existing.baseDamage = attackerDamage
+			existing.endsAt = now + def.duration
+			existing.nextTickAt = now + (def.interval or def.duration)
+			return
 		end
-	end)
+	end
+	table.insert(activeHeroEffects, {
+		effectDef = def,
+		humanoid = humanoid,
+		baseDamage = attackerDamage,
+		endsAt = now + def.duration,
+		nextTickAt = now + (def.interval or def.duration),
+	})
 end
 
 -- ────────────────────────────────────────────────────────────────────────
@@ -187,6 +195,22 @@ function StatusEffectSystem.tick(match: Match.Match, _dt: number)
 
 		i -= 1
 	end
+
+	local heroIndex = #activeHeroEffects
+	while heroIndex >= 1 do
+		local entry = activeHeroEffects[heroIndex]
+		local humanoid = entry.humanoid
+		local remove = humanoid.Parent == nil or humanoid.Health <= 0 or now >= entry.endsAt
+		if not remove and now >= entry.nextTickAt then
+			humanoid:TakeDamage(entry.baseDamage * entry.effectDef.damageRatio)
+			entry.nextTickAt = now + (entry.effectDef.interval or entry.effectDef.duration)
+		end
+		if remove then
+			activeHeroEffects[heroIndex] = activeHeroEffects[#activeHeroEffects]
+			activeHeroEffects[#activeHeroEffects] = nil
+		end
+		heroIndex -= 1
+	end
 end
 
 -- ────────────────────────────────────────────────────────────────────────
@@ -203,6 +227,7 @@ function StatusEffectSystem.clearAll(match: Match.Match)
 	end
 
 	table.clear(activeEffects)
+	table.clear(activeHeroEffects)
 end
 
 return StatusEffectSystem

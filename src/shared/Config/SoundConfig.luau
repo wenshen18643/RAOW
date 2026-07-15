@@ -11,10 +11,10 @@ export type SoundDef = {
 	volume: number,
 	pitch: number,
 	pitchVar: number,
-	group: "SFX" | "UI" | "Music",
+	group: "SFX" | "UI",
 }
 
-local function def(id: string, volume: number, pitch: number?, pitchVar: number?, group: ("SFX" | "UI" | "Music")?): SoundDef
+local function def(id: string, volume: number, pitch: number?, pitchVar: number?, group: ("SFX" | "UI")?): SoundDef
 	return {
 		id = id,
 		volume = volume,
@@ -31,10 +31,8 @@ local SoundConfig: { [string]: SoundDef } = {
 	rangedFire = def("rbxasset://sounds/paintball.wav", 0.4, 1.0, 0.12), -- bows/guns
 	laserFire = def("rbxasset://sounds/electronicpingshort.wav", 0.35, 0.8, 0.1), -- age 5
 	heavyFire = def("rbxasset://sounds/Rocket shot.wav", 0.55, 0.9, 0.1), -- tank/catapult/mech
-	impact = def("rbxasset://sounds/collide.wav", 0.35, 1.1, 0.2),
 	impactFlesh = def("rbxasset://sounds/splat.wav", 0.4, 1.0, 0.2),
 	unitDeath = def("rbxasset://sounds/uuhhh.mp3", 0.5, 1.0, 0.25),
-	baseHit = def("rbxasset://sounds/glassbreak.wav", 0.5, 0.6, 0.1),
 
 	-- hero weapon (local, non-positional so it always reads clearly)
 	heroMelee = def("rbxasset://sounds/swordslash.wav", 0.6, 0.95, 0.1),
@@ -50,7 +48,6 @@ local SoundConfig: { [string]: SoundDef } = {
 	-- UI (local)
 	click = def("rbxasset://sounds/clickfast.wav", 0.5, 1.0, 0, "UI"),
 	buy = def("rbxasset://sounds/electronicpingshort.wav", 0.45, 1.6, 0, "UI"),
-	error = def("rbxasset://sounds/button.wav", 0.5, 0.7, 0, "UI"),
 	hover = def("rbxasset://sounds/clickfast.wav", 0.2, 1.4, 0, "UI"),
 	baseAlarm = def("rbxasset://sounds/electronicpingshort.wav", 0.55, 1.45, 0, "UI"),
 }

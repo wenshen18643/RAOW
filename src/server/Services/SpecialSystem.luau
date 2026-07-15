@@ -62,7 +62,7 @@ local function dropProjectile(match: Match.Match, casterSide: string, def: any, 
 			if hum and root and hum.Health > 0 then
 				local d = root.Position - impactPos
 				if Vector3.new(d.X, 0, d.Z).Magnitude <= IMPACT_RADIUS then
-					hum:TakeDamage(def.damagePerHit * 0.6)
+					hum:TakeDamage(Match.reduceHeroDamage(match, enemySide, def.damagePerHit * 0.6))
 				end
 			end
 		end

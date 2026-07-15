@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 
 local GameUI = require(script.Parent.GameUI)
 local Viewmodel = require(script.Parent.Viewmodel)
+local Settings = require(script.Parent.Settings)
 
 local VFXConfig = nil -- lazy loaded after Shared is ready
 
@@ -33,6 +34,7 @@ end
 
 -- Generic particle burst: spawns small neon parts flying outward from a point
 local function particleBurst(pos: Vector3, color: Color3, secondaryColor: Color3, count: number, size: number)
+	if Settings.get("reducedEffects") then count = math.max(1, math.floor(count * 0.4)) end
 	local rng = Random.new()
 	for i = 1, count do
 		local p = Instance.new("Part")
@@ -101,8 +103,9 @@ local function explosion(data: { [string]: any })
 	ball.Position = pos
 	ball.Parent = workspace
 
+	local targetSize = Settings.get("reducedEffects") and 12 or 22
 	local tween = TweenService:Create(ball, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = Vector3.one * 22,
+		Size = Vector3.one * targetSize,
 		Transparency = 1,
 	})
 	tween:Play()
@@ -117,6 +120,7 @@ local shakeMag = 0
 
 -- Kicks the camera; magnitude ~0.2 subtle, ~1 heavy.
 function FX.shake(magnitude: number)
+	if Settings.get("reducedEffects") then return end
 	shakeMag = math.max(shakeMag, magnitude)
 end
 
@@ -179,6 +183,7 @@ local function floatingText(pos: Vector3, text: string, color: Color3, size: num
 end
 
 local function damageNumber(data: { [string]: any })
+	if not Settings.get("showDamageNumbers") then return end
 	local amount = data.amount :: number? or 0
 	local isHero = data.hero == true
 	floatingText(
@@ -201,6 +206,7 @@ end
 --------------------------------------------------------------------------------
 
 local function ageUpFlash()
+	if Settings.get("reducedEffects") then return end
 	local playerGui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then
 		return
@@ -305,6 +311,10 @@ local function statusVFX(data: { [string]: any })
 	local pos = data.pos :: Vector3
 	local color = data.color :: Color3? or Color3.fromRGB(255, 100, 100)
 	local effectId = data.effectId :: string? or ""
+	if Settings.get("reducedEffects") then
+		particleBurst(pos, color :: Color3, color :: Color3, 2, 1)
+		return
+	end
 
 	-- Small colored burst to indicate status effect applied
 	local count = 4
@@ -361,6 +371,30 @@ local function statusVFX(data: { [string]: any })
 	end
 end
 
+local function bossSlamWarning(data: { [string]: any })
+	local pos = data.pos :: Vector3
+	local radius = data.radius :: number? or 15
+	local duration = data.duration :: number? or 0.9
+	local ring = Instance.new("Part")
+	ring.Name = "BossSlamWarning"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.16, radius * 2, radius * 2)
+	ring.CFrame = CFrame.new(pos.X, pos.Y + 0.12, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(255, 70, 55)
+	ring.Transparency = 0.45
+	ring.Parent = workspace
+	TweenService:Create(ring, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		Transparency = 0.82,
+		Size = Vector3.new(0.16, radius * 2.15, radius * 2.15),
+	}):Play()
+	Debris:AddItem(ring, duration + 0.1)
+end
+
 function FX.start()
 	local RemotesModule = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Remotes")) :: any
 	RemotesModule.StateUpdate.OnClientEvent:Connect(function(state)
@@ -383,6 +417,8 @@ function FX.start()
 			meleeSwing(data)
 		elseif kind == "StatusVFX" then
 			statusVFX(data)
+		elseif kind == "BossSlamWarning" then
+			bossSlamWarning(data)
 		elseif kind == "Damage" then
 			damageNumber(data)
 		elseif kind == "Reward" then

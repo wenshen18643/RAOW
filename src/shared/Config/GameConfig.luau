@@ -4,13 +4,16 @@
 local GameConfig = {
 	-- Economy
 	STARTING_GOLD = 175,
-	HERO_KILL_BONUS_MULT = 1.5, -- extra reward when hero lands the kill
-	PASSIVE_INCOME_BY_AGE = { 2, 3.5, 6, 10, 16 }, -- gold per second
-	COMEBACK_INCOME_MAX = 4, -- extra gold/sec when your base is behind
-	ESCALATION_START = 15 * 60,
-	SUDDEN_DEATH_START = 20 * 60,
+	UNIT_KILL_GOLD_RATIO = 0.7, -- combat recycles some spending without creating runaway gold
+	HERO_KILL_BONUS_MULT = 1.25, -- active hero play improves the refund but never exceeds unit cost
+	PASSIVE_INCOME_BY_AGE = { 2, 5, 20, 120, 400 }, -- keeps a basic current-age unit near a 10s purchase cycle
+	COMEBACK_INCOME_RATIO = 0.5, -- up to +50% base income when your base is far behind
+	ESCALATION_START = 10 * 60,
+	SUDDEN_DEATH_START = 14 * 60,
 	ESCALATION_INCOME_MULT = 2,
 	SUDDEN_DEATH_INCOME_MULT = 4,
+	ESCALATION_BASE_DAMAGE_MULT = 1.5,
+	SUDDEN_DEATH_BASE_DAMAGE_MULT = 3,
 
 	-- Units
 	UNIT_CAP = 20, -- alive per side
@@ -28,6 +31,7 @@ local GameConfig = {
 	HERO_RESPAWN_BASE = 10, -- seconds, +HERO_RESPAWN_STEP per death
 	HERO_RESPAWN_STEP = 10,
 	HERO_RESPAWN_MAX = 40,
+	HERO_UPGRADE_MAX_TIER = 5,
 
 	-- Map
 	LANE_LENGTH = 300,

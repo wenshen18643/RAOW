@@ -3,6 +3,8 @@
 
 local PvELevels = {}
 
+PvELevels.MAX_LEVEL = 25
+
 export type DifficultyDef = {
 	hpMult: number,
 	damageMult: number,
@@ -40,6 +42,7 @@ local IMPOSSIBLE = {
 }
 
 function PvELevels.difficultyForLevel(level: number): DifficultyDef
+	level = math.clamp(math.floor(level), 1, PvELevels.MAX_LEVEL)
 	local t = math.clamp((level - 1) / 19, 0, 1) -- 1..20
 	
 	local function lerp(a: number, b: number, t: number)
@@ -65,6 +68,10 @@ function PvELevels.isBossLevel(level: number): boolean
 	return level > 0 and level % 5 == 0
 end
 
+function PvELevels.isFinalLevel(level: number): boolean
+	return level == PvELevels.MAX_LEVEL
+end
+
 function PvELevels.coinsForClear(level: number, isReplay: boolean): number
 	local coins = 50 + 25 * level
 	if PvELevels.isBossLevel(level) then
@@ -80,33 +87,44 @@ PvELevels.PVP_WIN_COINS = 100
 PvELevels.PVP_LOSS_COINS = 25
 
 PvELevels.UPGRADE_TRACKS = {
-	unitHp = { name = "Unit HP (+3%/tier)" },
-	unitDamage = { name = "Unit Damage (+3%/tier)" },
-	startingGold = { name = "Starting Gold (+50)" },
-} :: { [string]: { name: string } }
+	unitHp = { name = "Unit HP (+2%/tier)", maxTier = 10 },
+	unitDamage = { name = "Unit Damage (+2%/tier)", maxTier = 10 },
+	startingGold = { name = "Starting Gold (+15)", maxTier = 8 },
+} :: { [string]: { name: string, maxTier: number } }
 
 function PvELevels.upgradeCost(tier: number): number
 	return math.floor(100 * 1.35 ^ (tier - 1))
 end
 
 PvELevels.PERKS = {
-	headStart = { name = "Head Start (Age 2)", cost = 2000 },
-	freeTurret = { name = "Free Turret", cost = 1500 },
+	headStart = { name = "Head Start (Age 2, PvE only)", cost = 2000 },
+	freeTurret = { name = "Free First Turret (PvE only)", cost = 1500 },
 } :: { [string]: { name: string, cost: number } }
 
 -- Boss configuration
 function PvELevels.getBossConfig(level: number)
-	-- Pick an existing strong late-age unit id. Age 5 Super Heavy.
-	local baseUnitId = "age5_super_heavy"
+	local tier = math.clamp(math.ceil(level / 5), 1, 5)
+	local bosses = {
+		{ unitId = "age1_heavy", hpScale = 5, damageScale = 1.0 },
+		{ unitId = "age2_heavy", hpScale = 5, damageScale = 1.0 },
+		{ unitId = "age3_heavy", hpScale = 4.5, damageScale = 1.0 },
+		{ unitId = "age4_heavy", hpScale = 4.5, damageScale = 1.0 },
+		{ unitId = "age5_super_heavy", hpScale = 4, damageScale = 1.1 },
+	}
+	local boss = bosses[tier]
 	local diff = PvELevels.difficultyForLevel(level)
 	return {
-		unitId = baseUnitId,
-		modelScale = 2,
-		hpMult = diff.hpMult * 12,
-		damageMult = diff.damageMult * 2,
-		slamCooldown = 10,
+		unitId = boss.unitId,
+		modelScale = tier == 5 and 1.75 or 1.6,
+		hpMult = diff.hpMult * boss.hpScale,
+		damageMult = diff.damageMult * boss.damageScale,
+		slamCooldown = 12,
 		slamRadius = 15,
-		slamStunDuration = 2,
+		slamDamageMult = 1.2,
+		slamMaxUnitHpRatio = 0.6,
+		slamMaxHeroHpRatio = 0.45,
+		slamTelegraphDuration = 0.9,
+		slamStunDuration = 1.25,
 	}
 end
 

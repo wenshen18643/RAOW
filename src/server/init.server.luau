@@ -10,6 +10,7 @@ local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local DifficultyConfig = require(ReplicatedStorage.Shared.Config.DifficultyConfig)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
+local Ages = require(ReplicatedStorage.Shared.Config.Ages)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
 local Services = script.Services
@@ -26,7 +27,9 @@ local PlayerData = require(Services.PlayerData)
 local Telemetry = require(Services.Telemetry)
 local MatchmakingService = require(Services.MatchmakingService)
 local LobbyBuilder = require(Services.LobbyBuilder)
+local MonetizationService = require(Services.MonetizationService)
 require(Services.ProductionChecks).run()
+MonetizationService.start()
 
 Players.CharacterAutoLoads = false
 
@@ -45,17 +48,13 @@ local actionTimes: { [Player]: { [string]: number } } = {}
 local expectedMatchId: string? = nil
 local matchMode: "PvE" | "PvP" | "PvE-Levels" = "PvE"
 local simAccum = 0
+local rematchVotes: { [Player]: boolean } = {}
 
 local function sideFor(player: Player): string?
 	return playerSides[player]
 end
 
-local function allowAction(player: Player, action: string, interval: number): boolean
-	local match = currentMatch
-	if not match or not sideFor(player) or match.status ~= "Active" then
-		Telemetry.count(`remote_rejected_{action}`)
-		return false
-	end
+local function allowRate(player: Player, action: string, interval: number): boolean
 	local now = os.clock()
 	local times = actionTimes[player] or {}
 	actionTimes[player] = times
@@ -67,6 +66,27 @@ local function allowAction(player: Player, action: string, interval: number): bo
 	return true
 end
 
+local function allowAction(player: Player, action: string, interval: number): boolean
+	local match = currentMatch
+	if not match or not sideFor(player) or match.status ~= "Active" then
+		Telemetry.count(`remote_rejected_{action}`)
+		return false
+	end
+	return allowRate(player, action, interval)
+end
+
+local function loadPlayerProfile(player: Player)
+	PlayerData.load(player)
+	PlayerData.sync(player)
+	MonetizationService.refreshSupporterEntitlement(player)
+	local profile = PlayerData.get(player)
+	Telemetry.event(player, "session_started", 1, {
+		returning = profile.tutorialDone,
+		level = profile.level,
+		pveLevel = profile.pveLevel,
+	})
+end
+
 local function validSlot(value: any): boolean
 	return typeof(value) == "number" and value == value and value >= 1 and value <= GameConfig.TURRET_SLOTS and value % 1 == 0
 end
@@ -75,12 +95,13 @@ local function getMatch(): Match.Match
 	return currentMatch :: Match.Match
 end
 
-local RESTART_DELAY = 10
+local RESULT_TIMEOUT = 30
 local MATCH_JOIN_TIMEOUT = 60
 local joinTimeoutScheduled = false
 
 local function resetMap()
 	for _, base in map.bases do
+		MapBuilder.evolveBase(map, base.side, 1, Ages[1].color)
 		base.core:SetAttribute("Hp", GameConfig.BASE_MAX_HP)
 		base.core.Color = base.side == "A" and Color3.fromRGB(52, 120, 200) or Color3.fromRGB(200, 70, 60)
 	end
@@ -98,9 +119,22 @@ local function clearMatchState()
 	playerSides = {}
 	sidePlayers = { A = nil, B = nil }
 	playerReady = {}
+	rematchVotes = {}
 	actionTimes = {}
 	expectedMatchId = nil
 	joinTimeoutScheduled = false
+end
+
+local function teleportToLobby(players: { Player }): boolean
+	if #players == 0 then return true end
+	local ok, err = pcall(function() TeleportService:TeleportAsync(game.PlaceId, players) end)
+	if not ok then
+		warn("[Match] Return-to-lobby teleport failed:", err)
+		for _, player in players do
+			Remotes.MatchEvent:FireClient(player, "ReturnError", { message = "Couldn't return to the lobby. Press Return to retry." })
+		end
+	end
+	return ok
 end
 
 local function wireMatch(match: Match.Match)
@@ -142,6 +176,7 @@ local function wireMatch(match: Match.Match)
 							newXp = tutXpResult.newXp,
 							levelups = xpResult.levelups + tutXpResult.levelups,
 							unlocks = combinedUnlocks,
+							warBondsEarned = (xpResult.warBondsEarned or 0) + (tutXpResult.warBondsEarned or 0),
 						}
 						profile.tutorialDone = true
 						tutorialComplete = true
@@ -151,12 +186,14 @@ local function wireMatch(match: Match.Match)
 					xpResult = PlayerData.addXp(player, ProgressionConfig.XP_LOSS)
 					Telemetry.event(player, "pve_match_lost", os.clock() - match.startedAt)
 				end
-				PlayerData.sync(player)
+				local dailyWarBonds = PlayerData.recordDailyBattle(player, winner == "A")
+				if dailyWarBonds > 0 then Telemetry.event(player, "daily_battle_bonds_earned", dailyWarBonds) end
 
 				if winner == "A" then
-					local victoryPayload: { restartIn: number, xpData: any, tutorialComplete: boolean?, coins: number?, firstClear: boolean? } = {
-						restartIn = RESTART_DELAY,
+					local victoryPayload: { decisionIn: number, xpData: any, tutorialComplete: boolean?, coins: number?, firstClear: boolean?, dailyWarBonds: number?, canNextStage: boolean? } = {
+						decisionIn = RESULT_TIMEOUT,
 						xpData = xpResult,
+						dailyWarBonds = dailyWarBonds,
 					}
 					if tutorialComplete then
 						victoryPayload.tutorialComplete = true
@@ -165,23 +202,28 @@ local function wireMatch(match: Match.Match)
 						local firstClear = PlayerData.recordPveClear(player, match.pveLevel)
 						local rewardCoins = PvELevels.coinsForClear(match.pveLevel, not firstClear)
 						PlayerData.addCoins(player, rewardCoins)
-						PlayerData.sync(player)
 						victoryPayload.coins = rewardCoins
 						victoryPayload.firstClear = firstClear
+						victoryPayload.canNextStage = match.pveLevel < PvELevels.MAX_LEVEL
 					end
+					PlayerData.sync(player)
+					task.spawn(function() PlayerData.save(player) end)
 					Remotes.MatchEvent:FireClient(player, "Victory", victoryPayload)
 				else
-					local defeatPayload: { restartIn: number, xpData: any, coins: number? } = {
-						restartIn = RESTART_DELAY,
+					local defeatPayload: { decisionIn: number, xpData: any, coins: number?, dailyWarBonds: number? } = {
+						decisionIn = RESULT_TIMEOUT,
 						xpData = xpResult,
+						dailyWarBonds = dailyWarBonds,
 					}
 					if matchMode == "PvE-Levels" then
 						defeatPayload.coins = 0
 					end
+					PlayerData.sync(player)
+					task.spawn(function() PlayerData.save(player) end)
 					Remotes.MatchEvent:FireClient(player, "Defeat", defeatPayload)
 				end
 			end
-			task.delay(RESTART_DELAY, function()
+			task.delay(RESULT_TIMEOUT, function()
 				-- In a lobby server the player never left; just clear the match and reopen the menu.
 				if currentMatch ~= match then return end
 				for _, player in Players:GetPlayers() do
@@ -199,52 +241,45 @@ local function wireMatch(match: Match.Match)
 				PlayerData.recordWin(winnerPlayer)
 			end
 			local winnerXp, loserXp = nil, nil
+			local winnerDailyBonds, loserDailyBonds = 0, 0
 			if winnerPlayer then
 				winnerXp = PlayerData.addXp(winnerPlayer, ProgressionConfig.XP_WIN)
 				PlayerData.addCoins(winnerPlayer, PvELevels.PVP_WIN_COINS)
+				winnerDailyBonds = PlayerData.recordDailyBattle(winnerPlayer, true)
 				PlayerData.sync(winnerPlayer)
+				task.spawn(function() PlayerData.save(winnerPlayer) end)
+				if winnerDailyBonds > 0 then Telemetry.event(winnerPlayer, "daily_battle_bonds_earned", winnerDailyBonds) end
 				Telemetry.event(winnerPlayer, "pvp_match_won", os.clock() - match.startedAt, { matchId = expectedMatchId or "studio" })
 			end
 			if loserPlayer then
 				loserXp = PlayerData.addXp(loserPlayer, ProgressionConfig.XP_LOSS)
 				PlayerData.addCoins(loserPlayer, PvELevels.PVP_LOSS_COINS)
+				loserDailyBonds = PlayerData.recordDailyBattle(loserPlayer, false)
 				PlayerData.sync(loserPlayer)
+				task.spawn(function() PlayerData.save(loserPlayer) end)
+				if loserDailyBonds > 0 then Telemetry.event(loserPlayer, "daily_battle_bonds_earned", loserDailyBonds) end
 				Telemetry.event(loserPlayer, "pvp_match_lost", os.clock() - match.startedAt, { matchId = expectedMatchId or "studio" })
 			end
 			for side, player in sidePlayers do
 				if player then
 					local won = side == winner
 					Remotes.MatchEvent:FireClient(player, won and "Victory" or "Defeat", {
-						restartIn = RESTART_DELAY,
+						decisionIn = RESULT_TIMEOUT,
 						ratingDelta = won and winnerDelta or loserDelta,
 						xpData = won and winnerXp or loserXp,
 						coins = won and PvELevels.PVP_WIN_COINS or PvELevels.PVP_LOSS_COINS,
+						dailyWarBonds = won and winnerDailyBonds or loserDailyBonds,
 					})
 				end
 			end
-			task.delay(RESTART_DELAY, function()
-				if sidePlayers.A and sidePlayers.B then
-					-- Both still here: start a rematch in place.
-					UnitSim.clearAll(match)
-					TurretSystem.clearAll(match)
-					StatusEffectSystem.clearAll(match)
-					resetMap()
-					currentMatch = Match.new(map, match.difficulty)
-					currentMatch.mode = matchMode
-					wireMatch(currentMatch)
-					Match.start(currentMatch)
-					for side, player in sidePlayers do
-						if player then
-							player:SetAttribute("Side", side)
-							HeroSystem.bindPlayer(getMatch, player)
-							player:LoadCharacter()
-						end
-					end
-					return
-				end
+			task.delay(RESULT_TIMEOUT, function()
+				if currentMatch ~= match then return end
 				local survivors = Players:GetPlayers()
-				if #survivors > 0 and not isStudio then
-					pcall(function() TeleportService:TeleportAsync(game.PlaceId, survivors) end)
+				if isStudio then
+					for _, player in survivors do Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {}) end
+					clearMatchState()
+				elseif #survivors > 0 then
+					teleportToLobby(survivors)
 				end
 			end)
 		end
@@ -265,7 +300,10 @@ local function startMatch()
 	Remotes.MatchEvent:FireAllClients("MatchStart", { difficulty = match.difficulty, mode = matchMode })
 	for _, player in Players:GetPlayers() do
 		local side = sideFor(player)
-		if side then player:LoadCharacter() end
+		if side then
+			player:LoadCharacter()
+			Telemetry.event(player, "match_started", 1, { mode = matchMode, difficulty = match.difficulty })
+		end
 	end
 end
 
@@ -305,7 +343,7 @@ local function startPvELevel(player: Player, level: number)
 	local s = currentMatch.sides["A"]
 	s.pveUpgrades = profile.pveUpgrades
 	s.pvePerks = profile.pvePerks
-	s.gold += 50 * profile.pveUpgrades.startingGold -- +50 gold per purchased tier
+	s.gold += 15 * math.min(profile.pveUpgrades.startingGold, PvELevels.UPGRADE_TRACKS.startingGold.maxTier)
 	
 	playerReady[player] = true
 	startMatch()
@@ -337,8 +375,7 @@ local function initPvPReservedServer()
 	wireMatch(currentMatch)
 
 	Players.PlayerAdded:Connect(function(player)
-		PlayerData.load(player)
-		PlayerData.sync(player)
+		loadPlayerProfile(player)
 		local side: string? = nil
 		local joinData = player:GetJoinData()
 		local teleportData = joinData.TeleportData
@@ -437,25 +474,22 @@ end)
 
 Remotes.StartPveLevel.OnServerEvent:Connect(function(player, level)
 	if typeof(level) ~= "number" then return end
-	-- This is a menu action: no match exists yet, so allowAction (which requires an
-	-- active match and a side) can never pass here. Rate-limit inline instead.
-	local now = os.clock()
-	local times = actionTimes[player] or {}
-	actionTimes[player] = times
-	if now - (times.start_pve_level or 0) < 1.0 then return end
-	times.start_pve_level = now
+	if not allowRate(player, "start_pve_level", 1) then return end
 	level = math.floor(level)
 	local profile = PlayerData.get(player)
-	if level < 1 or level > profile.pveLevel + 1 then return end
+	if level < 1 or level > PvELevels.MAX_LEVEL or level > profile.pveLevel + 1 then return end
 	startPvELevel(player, level)
 end)
 
 Remotes.BuyPveUpgrade.OnServerEvent:Connect(function(player, trackOrPerkId)
-	if not allowAction(player, "buy_pve_upgrade", 0.2) or typeof(trackOrPerkId) ~= "string" then return end
+	if typeof(trackOrPerkId) ~= "string" or #trackOrPerkId > 64 or currentMatch then return end
+	if not allowRate(player, "buy_pve_upgrade", 0.2) then return end
 	local profile = PlayerData.get(player)
 	
 	if PvELevels.UPGRADE_TRACKS[trackOrPerkId] then
 		local currentTier = profile.pveUpgrades[trackOrPerkId] or 0
+		local maxTier = PvELevels.UPGRADE_TRACKS[trackOrPerkId].maxTier
+		if currentTier >= maxTier then return end
 		local cost = PvELevels.upgradeCost(currentTier + 1)
 		if PlayerData.spendCoins(player, cost) then
 			profile.pveUpgrades[trackOrPerkId] = currentTier + 1
@@ -473,20 +507,69 @@ Remotes.BuyPveUpgrade.OnServerEvent:Connect(function(player, trackOrPerkId)
 	end
 end)
 
-Remotes.LeaveMatch.OnServerEvent:Connect(function(player)
+Remotes.UpdateSettings.OnServerEvent:Connect(function(player, key, value)
+	if typeof(key) ~= "string" or #key > 32 or not allowRate(player, "update_settings", 0.15) then return end
+	if PlayerData.updateSetting(player, key, value) then task.spawn(function() PlayerData.save(player) end) end
+end)
+
+Remotes.ResultAction.OnServerEvent:Connect(function(player, action)
 	local match = currentMatch
 	if not match or match.status ~= "Ended" or not sideFor(player) then return end
-	playerReady[player] = false
-	if isStudio then return end
-	if matchMode == "PvE" or matchMode == "PvE-Levels" then
-		-- Lobby PvE: reopen the menu and free the match slot for a new game.
-		Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {})
-		clearMatchState()
+	if typeof(action) ~= "string" or not allowRate(player, "result_action", 0.5) then return end
+	if action ~= "replay" and action ~= "next" and action ~= "menu" then return end
+	Telemetry.event(player, "result_action", 1, { action = action, mode = matchMode })
+
+	if action == "menu" then
+		playerReady[player] = false
+		rematchVotes[player] = nil
+		if matchMode == "PvE" or matchMode == "PvE-Levels" then
+			Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {})
+			clearMatchState()
+		elseif isStudio then
+			for _, participant in Players:GetPlayers() do
+				Remotes.MatchEvent:FireClient(participant, "ReturnToMenu", {})
+			end
+			clearMatchState()
+		else
+			local participants = Players:GetPlayers()
+			teleportToLobby(participants)
+		end
 		return
 	end
-	pcall(function()
-		TeleportService:TeleportAsync(game.PlaceId, { player })
-	end)
+
+	if matchMode == "PvE" or matchMode == "PvE-Levels" then
+		local oldMode = matchMode
+		local difficulty = match.difficulty
+		local oldLevel = match.pveLevel or 1
+		if action == "next" then
+			if oldMode ~= "PvE-Levels" or match.winner ~= "A" or oldLevel >= PvELevels.MAX_LEVEL then return end
+			local profile = PlayerData.get(player)
+			if profile.pveLevel < oldLevel then return end
+		end
+		clearMatchState()
+		if oldMode == "PvE-Levels" then
+			startPvELevel(player, action == "next" and oldLevel + 1 or oldLevel)
+		else
+			startPvE(player, difficulty)
+		end
+		return
+	end
+
+	if action ~= "replay" or not sidePlayers.A or not sidePlayers.B then return end
+	rematchVotes[player] = true
+	local readyCount = (rematchVotes[sidePlayers.A :: Player] and 1 or 0) + (rematchVotes[sidePlayers.B :: Player] and 1 or 0)
+	Remotes.MatchEvent:FireAllClients("RematchStatus", { ready = readyCount, required = 2 })
+	if readyCount < 2 or currentMatch ~= match then return end
+
+	UnitSim.clearAll(match)
+	TurretSystem.clearAll(match)
+	StatusEffectSystem.clearAll(match)
+	resetMap()
+	rematchVotes = {}
+	currentMatch = Match.new(map, match.difficulty)
+	currentMatch.mode = "PvP"
+	wireMatch(currentMatch)
+	startMatch()
 end)
 
 -- Loops
@@ -548,11 +631,34 @@ if isLobby or isStudio then
 	end
 
 	Remotes.SelectMode.OnServerEvent:Connect(function(player, mode, diffId)
+		if not allowRate(player, "select_mode", 0.75) then return end
+		if mode ~= "pvp" and mode ~= "pve" then return end
+		Telemetry.event(player, "mode_selected", 1, { mode = mode, difficulty = tostring(diffId) })
 		if mode == "pvp" then
 			if isStudio then
-				-- Reserved-server teleports don't work in Studio; run PvP as a local PvE match instead.
-				Remotes.MatchEvent:FireClient(player, "QueueError", { message = "PvP unavailable in Studio — starting PvE match." })
-				startPvE(player, DifficultyConfig.DEFAULT)
+				-- Cloud matchmaking/teleports do not run in Studio. Two local clients
+				-- instead join this server's direct A/B test match.
+				if currentMatch and matchMode ~= "PvP" then
+					Remotes.MatchEvent:FireClient(player, "QueueError", { message = "A PvE match is already running." })
+					return
+				end
+				if not currentMatch then
+					matchMode = "PvP"
+					currentMatch = Match.new(map, DifficultyConfig.DEFAULT)
+					currentMatch.mode = matchMode
+					wireMatch(currentMatch)
+				end
+				if currentMatch.status ~= "Waiting" then return end
+				if not sideFor(player) then
+					local side = sidePlayers.A == nil and "A" or (sidePlayers.B == nil and "B" or nil)
+					if not side then
+						Remotes.MatchEvent:FireClient(player, "QueueError", { message = "The local 1v1 test is full." })
+						return
+					end
+					assignPlayer(player, side)
+				end
+				playerReady[player] = true
+				tryStartPvP()
 			else
 				MatchmakingService.enqueue(player)
 			end
@@ -562,8 +668,7 @@ if isLobby or isStudio then
 	end)
 
 	Players.PlayerAdded:Connect(function(player)
-		PlayerData.load(player)
-		PlayerData.sync(player)
+		loadPlayerProfile(player)
 		-- Lobby players wait in menu; character loads when a mode is selected.
 	end)
 
@@ -575,7 +680,7 @@ if isLobby or isStudio then
 			if currentMatch.onEnd then currentMatch.onEnd(currentMatch.winner :: string) end
 		end
 		playerSides[player] = nil
-		sidePlayers[side] = nil
+		if side then sidePlayers[side] = nil end
 		playerReady[player] = nil
 		actionTimes[player] = nil
 		PlayerData.unload(player)
@@ -592,7 +697,7 @@ else
 			if currentMatch.onEnd then currentMatch.onEnd(currentMatch.winner :: string) end
 		end
 		playerSides[player] = nil
-		sidePlayers[side] = nil
+		if side then sidePlayers[side] = nil end
 		playerReady[player] = nil
 		actionTimes[player] = nil
 		PlayerData.unload(player)

@@ -10,7 +10,7 @@ export type DifficultyDef = {
 	aiTickRate: number, -- seconds between AI brain ticks
 	aiSpecialThreshold: number, -- minimum enemy units before AI uses special ability
 	aiSpawnInterval: number, -- time in seconds between each AI unit spawn
-	aiEvolveInterval: number, -- time in seconds before AI automatically forces an age evolution
+	aiEvolveInterval: number, -- pacing interval between fair XP-gated evolution attempts
 	aiTurretInterval: number, -- time in seconds between AI turret purchases
 	aiCounterSpawn: boolean, -- enables reactive counter-spawning (Hard/Impossible)
 }

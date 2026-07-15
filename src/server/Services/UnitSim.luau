@@ -5,11 +5,11 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local Debris = game:GetService("Debris")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Units = require(ReplicatedStorage.Shared.Config.Units)
 local DifficultyConfig = require(ReplicatedStorage.Shared.Config.DifficultyConfig)
+local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 local StatusEffects = require(ReplicatedStorage.Shared.Config.StatusEffects)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 
@@ -21,6 +21,11 @@ local ObjectPool = require(script.Parent.ObjectPool)
 local PlayerData = require(script.Parent.PlayerData)
 
 local UnitSim = {}
+
+local FORMATION_LANES = { 0, -5, 5, -10, 10 }
+local TARGET_REFRESH_SECONDS = 0.25
+local PROJECTILE_SPEED = 32
+local recordByModel: { [Model]: Match.UnitRecord } = setmetatable({}, { __mode = "k" }) :: any
 
 local function playerForSide(side: string): Player?
 	for _, player in Players:GetPlayers() do
@@ -140,6 +145,7 @@ function UnitSim.killUnit(match: Match.Match, rec: Match.UnitRecord, killerSide:
 		return
 	end
 	rec.dead = true
+	recordByModel[rec.model] = nil
 	if killerSide then
 		local goldAwarded = Match.awardKill(match, killerSide, rec.def, isHeroKill)
 		-- gold popup for kills made by the player's side
@@ -189,16 +195,8 @@ end
 
 function UnitSim.findRecordByPart(match: Match.Match, part: BasePart): Match.UnitRecord?
 	local model = part:FindFirstAncestorOfClass("Model")
-	if not model then
-		return nil
-	end
-	for _, side in match.sides do
-		for _, rec in side.units do
-			if rec.model == model then
-				return rec
-			end
-		end
-	end
+	local rec = model and recordByModel[model]
+	if rec and not rec.dead and match.sides[rec.side] then return rec end
 	return nil
 end
 
@@ -274,7 +272,6 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	local trainTime = frontDef.trainTime
 	-- PvE Levels: the AI trains its army faster as levels climb.
 	if match.mode == "PvE-Levels" and s.side == "B" then
-		local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 		trainTime /= PvELevels.difficultyForLevel(match.pveLevel or 1).aiTrainSpeedMult
 	end
 	if now - s.lastSpawnAt < trainTime then
@@ -284,13 +281,15 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	local unitId = table.remove(s.queue, 1) :: string
 	local def = Units.byId[unitId]
 	local spawnCf = match.map.bases[s.side].unitSpawn
-	-- Single-file queue formation: each unit spawns slightly behind the previous one.
-	-- Max offset must stay under 14 (spawn point is 14 studs in front of the base).
-	local formationSlots = { 0, 3, 6, 9, 12 }
-	local formationIndex = (#s.units % #formationSlots) + 1
-	local backOff = formationSlots[formationIndex]
-	spawnCf = spawnCf * CFrame.new(0, 0, backOff) -- spawn cf faces lane; +z is behind
+	-- Five lateral lanes and four shallow rows prevent units spawning inside one
+	-- another while keeping every row safely in front of the base.
+	local formationIndex = (#s.units % #FORMATION_LANES) + 1
+	local row = math.floor(#s.units / #FORMATION_LANES)
+	local backOff = math.min(row * 3, 9)
+	spawnCf = spawnCf * CFrame.new(FORMATION_LANES[formationIndex], 0, backOff)
 	local model, body = buildUnitModel(def, s.side, spawnCf)
+	local owner = playerForSide(s.side)
+	body:SetAttribute("CommanderTitle", owner and owner:GetAttribute("CommanderTitle") or "")
 
 	-- PvP uses identical base stats for both sides. In PvE the AI (side "B")
 	-- gets the difficulty HP/damage multipliers so harder tiers actually hit harder.
@@ -299,7 +298,6 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	if (match.mode == "PvE" or match.mode == "PvE-Levels") and s.side == "B" then
 		local diffConfig = DifficultyConfig.LEVELS[match.difficulty] or DifficultyConfig.LEVELS[DifficultyConfig.DEFAULT]
 		if match.mode == "PvE-Levels" then
-			local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 			diffConfig = PvELevels.difficultyForLevel(match.pveLevel or 1)
 		end
 		scaledHp = math.floor(def.hp * diffConfig.hpMult)
@@ -308,8 +306,8 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	
 	if match.mode == "PvE-Levels" and s.side == "A" then
 		if s.pveUpgrades then
-			scaledHp = math.floor(scaledHp * (1.03 ^ (s.pveUpgrades.unitHp or 0)))
-			scaledDamage = math.floor(scaledDamage * (1.03 ^ (s.pveUpgrades.unitDamage or 0)))
+			scaledHp = math.floor(scaledHp * (1.02 ^ math.min(s.pveUpgrades.unitHp or 0, 10)))
+			scaledDamage = math.floor(scaledDamage * (1.02 ^ math.min(s.pveUpgrades.unitDamage or 0, 10)))
 		end
 	end
 
@@ -329,8 +327,11 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 		laneOffset = body.Position.Z,
 		moveHeading = s.side == "A" and Vector3.new(1, 0, 0) or Vector3.new(-1, 0, 0),
 		walkStart = now,
+		targetCache = nil,
+		targetRefreshAt = now,
 	}
 	table.insert(s.units, rec)
+	recordByModel[model] = rec
 	checkDoctrine(match, s)
 end
 
@@ -359,29 +360,12 @@ local function findTarget(match: Match.Match, rec: Match.UnitRecord): Target
 	local myPos = rec.body.Position
 	local best: Target? = nil
 	local bestDist = math.huge
-	-- Any unit that attacks from beyond melee reach needs line of sight (ranged AND heavies like Cannoneer/Tank)
-	local isRanged = rec.def.range > 8
-
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
-	local mapFolder = workspace:FindFirstChild("Map")
-	if mapFolder then
-		params.FilterDescendantsInstances = {mapFolder}
-	end
-
-	local function hasLOS(targetPos: Vector3): boolean
-		if not isRanged or not mapFolder then return true end
-		local fromPos = myPos + Vector3.new(0, 1.5, 0)
-		local toTarget = targetPos - fromPos
-		local res = workspace:Raycast(fromPos, toTarget, params)
-		return not (res and res.Instance.Name == "Rock")
-	end
-
 	for _, enemy in match.sides[enemySide].units do
 		if not enemy.dead then
 			local radius = enemy.body.Size.Z / 2
-			local d = (enemy.body.Position - myPos).Magnitude - radius
-			if d < bestDist and hasLOS(enemy.body.Position) then
+			local delta = enemy.body.Position - myPos
+			local d = Vector3.new(delta.X, 0, delta.Z).Magnitude - radius
+			if d < bestDist then
 				bestDist = d
 				best = { kind = "unit", pos = enemy.body.Position, unitRec = enemy, humanoid = nil, radius = radius, side = enemySide }
 			end
@@ -390,8 +374,9 @@ local function findTarget(match: Match.Match, rec: Match.UnitRecord): Target
 
 	local hero = heroTargetFor(match, enemySide)
 	if hero then
-		local d = (hero.pos - myPos).Magnitude - hero.radius
-		if d < bestDist and hasLOS(hero.pos) then
+		local delta = hero.pos - myPos
+		local d = Vector3.new(delta.X, 0, delta.Z).Magnitude - hero.radius
+		if d < bestDist then
 			bestDist = d
 			best = hero
 		end
@@ -399,13 +384,39 @@ local function findTarget(match: Match.Match, rec: Match.UnitRecord): Target
 
 	local core = match.map.bases[enemySide].core
 	local baseRadius = core.Size.X / 2
-	local dBase = (core.Position - myPos).Magnitude - baseRadius
+	local baseDelta = core.Position - myPos
+	local dBase = Vector3.new(baseDelta.X, 0, baseDelta.Z).Magnitude - baseRadius
 	if dBase < bestDist then
 		bestDist = dBase
 		best = { kind = "base", pos = core.Position, unitRec = nil, humanoid = nil, radius = baseRadius, side = enemySide }
 	end
 
 	return best :: Target
+end
+
+local function updateCachedTarget(match: Match.Match, rec: Match.UnitRecord, now: number): Target
+	local target = rec.targetCache :: Target?
+	local valid = target ~= nil
+	if target then
+		if target.kind == "unit" then
+			valid = target.unitRec ~= nil and not (target.unitRec :: Match.UnitRecord).dead
+			if valid then target.pos = (target.unitRec :: Match.UnitRecord).body.Position end
+		elseif target.kind == "hero" then
+			local hum = target.humanoid
+			local root = hum and hum.Parent and hum.Parent:FindFirstChild("HumanoidRootPart") :: BasePart?
+			valid = hum ~= nil and hum.Health > 0 and root ~= nil
+			if root then target.pos = root.Position end
+		else
+			target.pos = match.map.bases[target.side].core.Position
+		end
+	end
+	if not valid or now >= (rec.targetRefreshAt or 0) then
+		target = findTarget(match, rec)
+		rec.targetCache = target
+		-- Stagger refreshes slightly so large armies do not all scan on one tick.
+		rec.targetRefreshAt = now + TARGET_REFRESH_SECONDS + ((rec.body.Position.Z % 3) * 0.015)
+	end
+	return target :: Target
 end
 
 -- Apply age-based status effect on attack
@@ -423,7 +434,7 @@ local function applyStatusEffect(match: Match.Match, rec: Match.UnitRecord, targ
 	end
 end
 
-local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target, now: number)
+local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target, now: number, mapParams: RaycastParams)
 	if now < rec.nextAttackAt then
 		return
 	end
@@ -435,7 +446,8 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 	rec.animBasePos = rec.body.Position
 	rec.body:SetAttribute("AttackCount", ((rec.body:GetAttribute("AttackCount") :: number?) or 0) + 1)
 
-	if rec.def.role == "ranged" then
+	local usesProjectile = rec.def.range > 8
+	if usesProjectile then
 		Remotes.FX:FireAllClients("Tracer", {
 			from = rec.body.Position + Vector3.new(0, 1, 0),
 			to = target.pos,
@@ -445,7 +457,7 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 
 	local damage = rec.scaledDamage
 
-	if rec.def.role == "ranged" then
+	if usesProjectile then
 		-- Spawn Projectile instead of instant damage
 		local fromPos = rec.body.Position + Vector3.new(0, 1.5, 0)
 		local targetPos = target.pos
@@ -456,12 +468,8 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 		
 		local toTarget = (targetPos - fromPos)
 		-- Check Line of Sight
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Include
-		local mapFolder = workspace:FindFirstChild("Map")
-		if mapFolder then
-			params.FilterDescendantsInstances = {mapFolder}
-			local res = workspace:Raycast(fromPos, toTarget, params)
+		if match.map.folder.Parent then
+			local res = workspace:Raycast(fromPos, toTarget, mapParams)
 			if res and res.Instance.Name == "Rock" then
 				-- Blocked by terrain! Do not attack.
 				rec.nextAttackAt = now + 0.2 -- check again soon
@@ -470,12 +478,10 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 		end
 
 		local dir = toTarget.Magnitude > 0.01 and toTarget.Unit or Vector3.new(1,0,0)
-		local projId = tostring(math.random(100000, 999999))
 		table.insert(match.projectiles, {
-			id = projId,
 			pos = fromPos,
 			dir = dir,
-			speed = 25,
+			speed = PROJECTILE_SPEED,
 			damage = damage,
 			side = rec.side,
 			age = rec.def.age,
@@ -508,31 +514,13 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 				return -- The player/unit dodged out of range!
 			end
 
-			-- Long-reach instant attacks (Cannoneer, Tank) can't hit through terrain
-			if rec.def.range > 8 then
-				local losParams = RaycastParams.new()
-				losParams.FilterType = Enum.RaycastFilterType.Include
-				local mapFolder = workspace:FindFirstChild("Map")
-				if mapFolder then
-					losParams.FilterDescendantsInstances = { mapFolder }
-					local fromPos = rec.body.Position + Vector3.new(0, 1.5, 0)
-					local res = workspace:Raycast(fromPos, currentPos - fromPos, losParams)
-					if res and res.Instance.Name == "Rock" then
-						return -- blocked by terrain
-					end
-				end
-			end
-
 			-- Apply damage
 			if target.kind == "unit" and target.unitRec then
 				UnitSim.damageUnit(match, target.unitRec, damage, rec.side, false)
 				applyStatusEffect(match, rec, target)
 				Remotes.FX:FireAllClients("ImpactVFX", { pos = target.unitRec.body.Position, age = rec.def.age })
 			elseif target.kind == "hero" and target.humanoid then
-				local s = match.sides[target.side]
-				local defLevel = (s.heroUpgrades and s.heroUpgrades.def) or 0
-				local defMult = 1 - math.min(0.50, 0.10 * defLevel)
-				target.humanoid:TakeDamage(damage * defMult)
+				target.humanoid:TakeDamage(Match.reduceHeroDamage(match, target.side, damage))
 				applyStatusEffect(match, rec, target)
 			elseif target.kind == "base" then
 				Match.damageBase(match, Match.enemyOf(rec.side), damage, rec.side, false)
@@ -542,7 +530,18 @@ local function attack(match: Match.Match, rec: Match.UnitRecord, target: Target,
 end
 
 -- Process active projectiles
-local function processProjectiles(match: Match.Match, dt: number)
+local function applyProjectileStatus(match: Match.Match, projectile: Match.ProjectileRecord, unit: Match.UnitRecord?, humanoid: Humanoid?)
+	local effectDef = StatusEffects.byAge[projectile.age]
+	if not effectDef then return end
+	local StatusEffectSystem = require(script.Parent.StatusEffectSystem)
+	if unit then
+		StatusEffectSystem.apply(match, unit, effectDef.id, projectile.damage, projectile.side)
+	elseif humanoid then
+		StatusEffectSystem.applyToHero(humanoid, effectDef.id, projectile.damage)
+	end
+end
+
+local function processProjectiles(match: Match.Match, dt: number, mapParams: RaycastParams)
 	for i = #match.projectiles, 1, -1 do
 		local p = match.projectiles[i]
 		local travel = p.speed * dt
@@ -553,12 +552,8 @@ local function processProjectiles(match: Match.Match, dt: number)
 		local hitTerrain = false
 		
 		-- Raycast to check for terrain hit
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Include
-		local mapFolder = workspace:FindFirstChild("Map")
-		if mapFolder then
-			params.FilterDescendantsInstances = {mapFolder}
-			local res = workspace:Raycast(p.pos, p.dir * travel, params)
+		if match.map.folder.Parent then
+			local res = workspace:Raycast(p.pos, p.dir * travel, mapParams)
 			if res and res.Instance.Name == "Rock" then
 				hitTerrain = true
 			end
@@ -576,10 +571,8 @@ local function processProjectiles(match: Match.Match, dt: number)
 				if char then
 					local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 					if root and (root.Position - nextPos).Magnitude < 2.5 then
-						local s = match.sides[p.target.side]
-						local defLevel = (s.heroUpgrades and s.heroUpgrades.def) or 0
-						local defMult = 1 - math.min(0.50, 0.10 * defLevel)
-						p.target.humanoid:TakeDamage(p.damage * defMult)
+						p.target.humanoid:TakeDamage(Match.reduceHeroDamage(match, p.target.side, p.damage))
+						applyProjectileStatus(match, p, nil, p.target.humanoid)
 						hit = true
 					end
 				end
@@ -597,6 +590,7 @@ local function processProjectiles(match: Match.Match, dt: number)
 							dmg *= GameConfig.RANGED_ARMOR_MULT
 						end
 						UnitSim.damageUnit(match, enemyRec, dmg, p.side, false)
+						if not enemyRec.dead then applyProjectileStatus(match, p, enemyRec, nil) end
 						Remotes.FX:FireAllClients("ImpactVFX", { pos = enemyRec.body.Position, age = p.age })
 						hit = true
 						break
@@ -628,11 +622,14 @@ function UnitSim.tick(match: Match.Match, dt: number)
 		return
 	end
 	local now = os.clock()
+	local mapParams = RaycastParams.new()
+	mapParams.FilterType = Enum.RaycastFilterType.Include
+	mapParams.FilterDescendantsInstances = { match.map.folder }
 	for _, s in match.sides do
 		popQueue(match, s, now)
 	end
 	
-	processProjectiles(match, dt)
+	processProjectiles(match, dt, mapParams)
 
 	for _, s in match.sides do
 		-- iterate over a copy: kills mutate the list
@@ -649,7 +646,7 @@ function UnitSim.tick(match: Match.Match, dt: number)
 				continue
 			end
 
-			local target = findTarget(match, rec)
+			local target = updateCachedTarget(match, rec, now)
 			local myPos = rec.body.Position
 
 			-- attack animation: lunge for melee, recoil for ranged/heavy
@@ -681,18 +678,15 @@ function UnitSim.tick(match: Match.Match, dt: number)
 
 			local hasLOS = true
 			if rec.def.range > 8 then
-				local params = RaycastParams.new()
-				params.FilterType = Enum.RaycastFilterType.Include
-				local mapFolder = workspace:FindFirstChild("Map")
-				if mapFolder then
-					params.FilterDescendantsInstances = {mapFolder}
+				local mapFolder = match.map.folder
+				if mapFolder.Parent then
 					local fromPos = myPos + Vector3.new(0, 1.5, 0)
 					local targetPos = target.pos
 					if target.kind == "hero" and target.humanoid then
 						local hrp = target.humanoid.Parent and target.humanoid.Parent:FindFirstChild("HumanoidRootPart")
 						if hrp then targetPos = hrp.Position end
 					end
-					local res = workspace:Raycast(fromPos, targetPos - fromPos, params)
+					local res = workspace:Raycast(fromPos, targetPos - fromPos, mapParams)
 					if res and res.Instance.Name == "Rock" then
 						hasLOS = false
 					end
@@ -701,7 +695,7 @@ function UnitSim.tick(match: Match.Match, dt: number)
 
 			if flatDist <= rec.def.range and hasLOS then
 				setAnimState(rec, "combat")
-				attack(match, rec, target, now)
+				attack(match, rec, target, now, mapParams)
 				-- face target
 				local look = Vector3.new(target.pos.X, myPos.Y, target.pos.Z)
 				if (look - myPos).Magnitude > 0.1 then
@@ -736,14 +730,11 @@ function UnitSim.tick(match: Match.Match, dt: number)
 
 				-- Obstacle Avoidance Steering (Blockcast for unit width)
 				local obstacleAvoid = Vector3.zero
-				local params = RaycastParams.new()
-				params.FilterType = Enum.RaycastFilterType.Include
-				local mapFolder = workspace:FindFirstChild("Map")
-				if mapFolder then
-					params.FilterDescendantsInstances = {mapFolder}
+				local mapFolder = match.map.folder
+				if mapFolder.Parent then
 					local origin = myPos + Vector3.new(0, 1, 0)
 					local cf = CFrame.new(origin, origin + desiredDir)
-					local res = workspace:Blockcast(cf, rec.body.Size, desiredDir * 8, params)
+					local res = workspace:Blockcast(cf, rec.body.Size, desiredDir * 8, mapParams)
 					if res and res.Instance.Name == "Rock" then
 						-- Steer laterally away from the obstacle
 						local normal = Vector3.new(res.Normal.X, 0, res.Normal.Z)
@@ -769,7 +760,7 @@ function UnitSim.tick(match: Match.Match, dt: number)
 					if mapFolder and step.Magnitude > 0.001 then
 						local origin = myPos + Vector3.new(0, 1, 0)
 						local wallCf = CFrame.new(origin, origin + rec.moveHeading)
-						local wallHit = workspace:Blockcast(wallCf, rec.body.Size, step + step.Unit * 0.5, params)
+						local wallHit = workspace:Blockcast(wallCf, rec.body.Size, step + step.Unit * 0.5, mapParams)
 						if wallHit and wallHit.Instance.Name == "Rock" then
 							local n = Vector3.new(wallHit.Normal.X, 0, wallHit.Normal.Z)
 							if n.Magnitude > 0.1 then
@@ -808,6 +799,7 @@ function UnitSim.clearAll(match: Match.Match)
 	for _, s in match.sides do
 		for _, rec in table.clone(s.units) do
 			rec.dead = true
+			recordByModel[rec.model] = nil
 			rec.model:Destroy()
 		end
 		table.clear(s.units)
