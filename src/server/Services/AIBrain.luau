@@ -114,10 +114,10 @@ function AIBrain.tick(match: Match.Match)
 		return
 	end
 
-	local diffConfig = DifficultyConfig.LEVELS[match.difficulty] or DifficultyConfig.LEVELS[DifficultyConfig.DEFAULT]
-	if match.mode == "PvE-Levels" then
+	local diffConfig: any = DifficultyConfig.LEVELS[match.difficulty] or DifficultyConfig.LEVELS[DifficultyConfig.DEFAULT]
+	if match.mode == "PvE" then
 		local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
-		diffConfig = PvELevels.difficultyForLevel(match.pveLevel or 1)
+		diffConfig = PvELevels.difficultyForLevel(match.pveMode or "Normal", match.pveLevel or 1)
 	end
 	local s = match.sides[SIDE]
 	local now = os.clock()
@@ -136,14 +136,14 @@ function AIBrain.tick(match: Match.Match)
 	end
 
 	-- Boss Spawn Check
-	if match.mode == "PvE-Levels" and not state.bossSpawned then
+	if match.mode == "PvE" and not state.bossSpawned then
 		local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 		local level = match.pveLevel or 1
 		if PvELevels.isBossLevel(level) then
 			-- Wait a short time before spawning boss (e.g. 5 seconds)
 			if now - match.startedAt > 5 then
 				state.bossSpawned = true
-				local bossConf = PvELevels.getBossConfig(level)
+				local bossConf = PvELevels.getBossConfig(match.pveMode or "Normal", level)
 				local def = Units.byId[bossConf.unitId]
 				if def then
 					-- Create a cloned def for the boss to modify its stats
@@ -177,6 +177,7 @@ function AIBrain.tick(match: Match.Match)
 							bossRec.hp = bossDef.hp
 							bossRec.maxHp = bossDef.hp
 							bossRec.scaledDamage = bossDef.damage
+							UnitSim.refreshHpBar(bossRec)
 							
 							-- Periodic Slam
 							task.spawn(function()

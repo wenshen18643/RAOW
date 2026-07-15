@@ -81,8 +81,9 @@ export type Match = {
 	winner: string?,
 	resultCommitted: boolean,
 	difficulty: string, -- "Normal" | "Harder" | "Impossible"
-	pveLevel: number?, -- Set for PvE-Levels mode
-	mode: "PvE" | "PvP" | "PvE-Levels",
+	pveLevel: number?, -- Set for PvE mode
+	pveMode: string?, -- "Normal" | "Hard" | "Impossible"
+	mode: "PvE" | "PvP",
 	projectiles: { ProjectileRecord },
 	-- callbacks wired by init
 	onAgeUp: (side: string, newAge: number) -> ()?,
@@ -139,9 +140,9 @@ function Match.getIncomeRate(match: Match, side: string): number
 		mult = GameConfig.ESCALATION_INCOME_MULT
 	end
 	local rate = (baseIncome + comeback) * mult
-	-- PvE Levels: the AI's gold production scales with the level.
-	if match.mode == "PvE-Levels" and side == "B" then
-		rate *= PvELevels.difficultyForLevel(match.pveLevel or 1).aiIncomeMult
+	-- PvE: the AI's gold production scales with the level.
+	if match.mode == "PvE" and side == "B" then
+		rate *= PvELevels.difficultyForLevel(match.pveMode or "Normal", match.pveLevel or 1).aiIncomeMult
 	end
 	return rate
 end
@@ -170,6 +171,7 @@ function Match.new(map: MapBuilder.MapHandle, difficulty: string?): Match
 		resultCommitted = false,
 		difficulty = difficulty or "Normal",
 		pveLevel = nil,
+		pveMode = nil,
 		mode = "PvE" :: any,
 		projectiles = {},
 		onAgeUp = nil,
@@ -340,6 +342,7 @@ function Match.buildSnapshot(match: Match, playerSide: string): { [string]: any 
 		status = match.status,
 		difficulty = match.difficulty,
 		pveLevel = match.pveLevel,
+		pveMode = match.pveMode,
 		mode = match.mode,
 		heroUpgrades = s.heroUpgrades,
 		pveUpgrades = s.pveUpgrades,

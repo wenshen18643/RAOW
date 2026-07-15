@@ -8,7 +8,6 @@ local Players = game:GetService("Players")
 
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Units = require(ReplicatedStorage.Shared.Config.Units)
-local DifficultyConfig = require(ReplicatedStorage.Shared.Config.DifficultyConfig)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 local StatusEffects = require(ReplicatedStorage.Shared.Config.StatusEffects)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -138,6 +137,12 @@ local function updateHpBar(rec: Match.UnitRecord)
 			or frac > 0.25 and Color3.fromRGB(230, 200, 60)
 			or Color3.fromRGB(220, 70, 60)
 	end
+end
+
+-- Public wrapper so systems that rewrite hp/maxHp directly (e.g. the boss
+-- stat override in AIBrain) can resync the bar without dealing damage.
+function UnitSim.refreshHpBar(rec: Match.UnitRecord)
+	updateHpBar(rec)
 end
 
 function UnitSim.killUnit(match: Match.Match, rec: Match.UnitRecord, killerSide: string?, isHeroKill: boolean?)
@@ -270,9 +275,9 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	-- Each unit trains for its own duration: (trainTime) --> unit --> (trainTime) --> unit ...
 	local frontDef = Units.byId[s.queue[1]]
 	local trainTime = frontDef.trainTime
-	-- PvE Levels: the AI trains its army faster as levels climb.
-	if match.mode == "PvE-Levels" and s.side == "B" then
-		trainTime /= PvELevels.difficultyForLevel(match.pveLevel or 1).aiTrainSpeedMult
+	-- PvE: the AI trains its army faster as levels climb.
+	if match.mode == "PvE" and s.side == "B" then
+		trainTime /= PvELevels.difficultyForLevel(match.pveMode or "Normal", match.pveLevel or 1).aiTrainSpeedMult
 	end
 	if now - s.lastSpawnAt < trainTime then
 		return
@@ -295,16 +300,13 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	-- gets the difficulty HP/damage multipliers so harder tiers actually hit harder.
 	local scaledHp = def.hp
 	local scaledDamage = def.damage
-	if (match.mode == "PvE" or match.mode == "PvE-Levels") and s.side == "B" then
-		local diffConfig = DifficultyConfig.LEVELS[match.difficulty] or DifficultyConfig.LEVELS[DifficultyConfig.DEFAULT]
-		if match.mode == "PvE-Levels" then
-			diffConfig = PvELevels.difficultyForLevel(match.pveLevel or 1)
-		end
+	if match.mode == "PvE" and s.side == "B" then
+		local diffConfig = PvELevels.difficultyForLevel(match.pveMode or "Normal", match.pveLevel or 1)
 		scaledHp = math.floor(def.hp * diffConfig.hpMult)
 		scaledDamage = math.floor(def.damage * diffConfig.damageMult)
 	end
 	
-	if match.mode == "PvE-Levels" and s.side == "A" then
+	if match.mode == "PvE" and s.side == "A" then
 		if s.pveUpgrades then
 			scaledHp = math.floor(scaledHp * (1.02 ^ math.min(s.pveUpgrades.unitHp or 0, 10)))
 			scaledDamage = math.floor(scaledDamage * (1.02 ^ math.min(s.pveUpgrades.unitDamage or 0, 10)))

@@ -46,7 +46,7 @@ local sidePlayers: { [string]: Player? } = { A = nil, B = nil }
 local playerReady: { [Player]: boolean } = {}
 local actionTimes: { [Player]: { [string]: number } } = {}
 local expectedMatchId: string? = nil
-local matchMode: "PvE" | "PvP" | "PvE-Levels" = "PvE"
+local matchMode: "PvE" | "PvP" = "PvE"
 local simAccum = 0
 local rematchVotes: { [Player]: boolean } = {}
 
@@ -151,7 +151,7 @@ local function wireMatch(match: Match.Match)
 		if match.resultCommitted then return end
 		match.resultCommitted = true
 
-		if matchMode == "PvE" or matchMode == "PvE-Levels" then
+		if matchMode == "PvE" then
 			local player = sidePlayers["A"]
 			if player then
 				local xpResult
@@ -198,13 +198,13 @@ local function wireMatch(match: Match.Match)
 					if tutorialComplete then
 						victoryPayload.tutorialComplete = true
 					end
-					if matchMode == "PvE-Levels" and match.pveLevel then
-						local firstClear = PlayerData.recordPveClear(player, match.pveLevel)
-						local rewardCoins = PvELevels.coinsForClear(match.pveLevel, not firstClear)
+					if matchMode == "PvE" and match.pveLevel and match.pveMode then
+						local firstClear = PlayerData.recordPveClear(player, match.pveMode, match.pveLevel)
+						local rewardCoins = PvELevels.coinsForClear(match.pveMode, match.pveLevel, not firstClear)
 						PlayerData.addCoins(player, rewardCoins)
 						victoryPayload.coins = rewardCoins
 						victoryPayload.firstClear = firstClear
-						victoryPayload.canNextStage = match.pveLevel < PvELevels.MAX_LEVEL
+						victoryPayload.canNextStage = true
 					end
 					PlayerData.sync(player)
 					task.spawn(function() PlayerData.save(player) end)
@@ -215,7 +215,7 @@ local function wireMatch(match: Match.Match)
 						xpData = xpResult,
 						dailyWarBonds = dailyWarBonds,
 					}
-					if matchMode == "PvE-Levels" then
+					if matchMode == "PvE" then
 						defeatPayload.coins = 0
 					end
 					PlayerData.sync(player)
@@ -307,34 +307,16 @@ local function startMatch()
 	end
 end
 
-local function startPvE(player: Player, difficulty: string)
-	if currentMatch then
-		Remotes.MatchEvent:FireClient(player, "QueueError", { message = "A match is already running in this lobby." })
-		return
-	end
-	if not DifficultyConfig.LEVELS[difficulty] then
-		difficulty = DifficultyConfig.DEFAULT
-	end
-
-	matchMode = "PvE"
-	currentMatch = Match.new(map, difficulty)
-	currentMatch.mode = matchMode
-	wireMatch(currentMatch)
-	assignPlayer(player, "A")
-	playerReady[player] = true
-
-	startMatch()
-end
-
-local function startPvELevel(player: Player, level: number)
+local function startPvELevel(player: Player, mode: string, level: number)
 	if currentMatch then
 		Remotes.MatchEvent:FireClient(player, "QueueError", { message = "A match is already running in this lobby." })
 		return
 	end
 	
-	matchMode = "PvE-Levels"
+	matchMode = "PvE"
 	currentMatch = Match.new(map, "Normal")
 	currentMatch.pveLevel = level
+	currentMatch.pveMode = mode
 	currentMatch.mode = matchMode
 	wireMatch(currentMatch)
 	assignPlayer(player, "A")
@@ -472,13 +454,15 @@ Remotes.BuyUpgrade.OnServerEvent:Connect(function(player, stat)
 	HeroSystem.buyUpgrade(match, player, stat)
 end)
 
-Remotes.StartPveLevel.OnServerEvent:Connect(function(player, level)
-	if typeof(level) ~= "number" then return end
+Remotes.StartPveLevel.OnServerEvent:Connect(function(player, mode, level)
+	if typeof(level) ~= "number" or typeof(mode) ~= "string" then return end
 	if not allowRate(player, "start_pve_level", 1) then return end
 	level = math.floor(level)
+	if not table.find(PvELevels.MODES, mode) then return end
 	local profile = PlayerData.get(player)
-	if level < 1 or level > PvELevels.MAX_LEVEL or level > profile.pveLevel + 1 then return end
-	startPvELevel(player, level)
+	local prog = profile.pveProgress[mode] or 0
+	if level < 1 or level > prog + 1 then return end
+	startPvELevel(player, mode, level)
 end)
 
 Remotes.BuyPveUpgrade.OnServerEvent:Connect(function(player, trackOrPerkId)
@@ -522,7 +506,7 @@ Remotes.ResultAction.OnServerEvent:Connect(function(player, action)
 	if action == "menu" then
 		playerReady[player] = false
 		rematchVotes[player] = nil
-		if matchMode == "PvE" or matchMode == "PvE-Levels" then
+		if matchMode == "PvE" then
 			Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {})
 			clearMatchState()
 		elseif isStudio then
@@ -537,21 +521,16 @@ Remotes.ResultAction.OnServerEvent:Connect(function(player, action)
 		return
 	end
 
-	if matchMode == "PvE" or matchMode == "PvE-Levels" then
-		local oldMode = matchMode
-		local difficulty = match.difficulty
+	if matchMode == "PvE" then
 		local oldLevel = match.pveLevel or 1
+		local oldMode = match.pveMode or "Normal"
 		if action == "next" then
-			if oldMode ~= "PvE-Levels" or match.winner ~= "A" or oldLevel >= PvELevels.MAX_LEVEL then return end
+			if match.winner ~= "A" then return end
 			local profile = PlayerData.get(player)
-			if profile.pveLevel < oldLevel then return end
+			if (profile.pveProgress[oldMode] or 0) < oldLevel then return end
 		end
 		clearMatchState()
-		if oldMode == "PvE-Levels" then
-			startPvELevel(player, action == "next" and oldLevel + 1 or oldLevel)
-		else
-			startPvE(player, difficulty)
-		end
+		startPvELevel(player, oldMode, action == "next" and oldLevel + 1 or oldLevel)
 		return
 	end
 
@@ -582,7 +561,7 @@ RunService.Heartbeat:Connect(function(dt)
 	simAccum += dt
 	local step = 1 / GameConfig.SIM_RATE
 	if simAccum >= step then
-		if (matchMode == "PvE" or matchMode == "PvE-Levels") and match.status == "Active" then
+		if matchMode == "PvE" and match.status == "Active" then
 			AIBrain.tick(match)
 		end
 		UnitSim.tick(match, simAccum)
@@ -662,8 +641,6 @@ if isLobby or isStudio then
 			else
 				MatchmakingService.enqueue(player)
 			end
-		elseif mode == "pve" then
-			startPvE(player, diffId)
 		end
 	end)
 

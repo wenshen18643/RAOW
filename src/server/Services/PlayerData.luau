@@ -28,7 +28,7 @@ export type PlayerProfile = {
 	xp: number,
 	tutorialDone: boolean,
 	coins: number,
-	pveLevel: number,
+	pveProgress: { Normal: number, Hard: number, Impossible: number },
 	pveUpgrades: { unitHp: number, unitDamage: number, startingGold: number },
 	pvePerks: { string },
 	warBonds: number,
@@ -60,7 +60,7 @@ local function defaultProfile(): PlayerProfile
 		xp = 0,
 		tutorialDone = false,
 		coins = 0,
-		pveLevel = 0,
+		pveProgress = { Normal = 0, Hard = 0, Impossible = 0 },
 		pveUpgrades = { unitHp = 0, unitDamage = 0, startingGold = 0 },
 		pvePerks = {},
 		warBonds = 0,
@@ -137,7 +137,13 @@ function PlayerData.load(player: Player)
 		profile.xp = math.max(tonumber(result.xp) or 0, 0)
 		profile.tutorialDone = result.tutorialDone == true
 		profile.coins = math.max(tonumber(result.coins) or 0, 0)
-		profile.pveLevel = math.clamp(math.floor(tonumber(result.pveLevel) or 0), 0, PvELevels.MAX_LEVEL)
+		if result.pveProgress and typeof(result.pveProgress) == "table" then
+			profile.pveProgress.Normal = math.max(math.floor(tonumber(result.pveProgress.Normal) or 0), 0)
+			profile.pveProgress.Hard = math.max(math.floor(tonumber(result.pveProgress.Hard) or 0), 0)
+			profile.pveProgress.Impossible = math.max(math.floor(tonumber(result.pveProgress.Impossible) or 0), 0)
+		else
+			profile.pveProgress.Normal = math.max(math.floor(tonumber(result.pveLevel) or 0), 0)
+		end
 		if result.pveUpgrades and typeof(result.pveUpgrades) == "table" then
 			profile.pveUpgrades.unitHp = math.clamp(math.floor(tonumber(result.pveUpgrades.unitHp) or 0), 0, 10)
 			profile.pveUpgrades.unitDamage = math.clamp(math.floor(tonumber(result.pveUpgrades.unitDamage) or 0), 0, 10)
@@ -244,8 +250,9 @@ function PlayerData.save(player: Player): boolean
 		warn("[PlayerData] Failed to save profile for " .. player.Name .. ": " .. tostring(err))
 	else
 		Leaderboard.submit(player.UserId, profile.rating)
-		if profile.pveLevel > 0 then
-			Leaderboard.submitPveLevel(player.UserId, profile.pveLevel)
+		local totalPve = profile.pveProgress.Normal + profile.pveProgress.Hard + profile.pveProgress.Impossible
+		if totalPve > 0 then
+			Leaderboard.submitPveLevel(player.UserId, totalPve)
 		end
 	end
 	if shouldSaveAgain and cache[player] and player.Parent then
@@ -334,11 +341,12 @@ function PlayerData.spendCoins(player: Player, amount: number): boolean
 	return false
 end
 
-function PlayerData.recordPveClear(player: Player, level: number): boolean
+function PlayerData.recordPveClear(player: Player, mode: string, level: number): boolean
 	local profile = cache[player]
 	if profile then
-		if level > profile.pveLevel then
-			profile.pveLevel = level
+		local currentProg = profile.pveProgress[mode] or 0
+		if level > currentProg then
+			profile.pveProgress[mode] = level
 			return true
 		end
 	end
@@ -353,6 +361,7 @@ function PlayerData.sync(player: Player)
 		player:SetAttribute("CommanderTitle", title and title.name or "")
 		player:SetAttribute("ArmyTheme", profile.equippedTheme)
 		local publicProfile: any = table.clone(profile)
+		publicProfile.pveLevel = profile.pveProgress.Normal
 		publicProfile.processedReceipts = nil
 		Remotes.ProfileSync:FireClient(player, publicProfile)
 	end

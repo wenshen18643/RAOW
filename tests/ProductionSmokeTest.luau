@@ -12,11 +12,10 @@ local turrets = require(shared.Config.Turrets)
 local soundConfig = require(shared.Config.SoundConfig)
 local remotes = require(shared.Remotes)
 
-assert(pve.MAX_LEVEL == 25, "PvE endpoint mismatch")
-assert(pve.isFinalLevel(25), "final stage is not marked")
+assert(pve.difficultyForLevel("Normal", 100).hpMult > pve.difficultyForLevel("Normal", 50).hpMult, "endless PvE difficulty must keep scaling")
 local expectedBosses = { "age1_heavy", "age2_heavy", "age3_heavy", "age4_heavy", "age5_super_heavy" }
 for tier, unitId in expectedBosses do
-	local boss = pve.getBossConfig(tier * 5)
+	local boss = pve.getBossConfig("Normal", tier * 5)
 	assert(boss.unitId == unitId, `boss tier {tier} is not age-appropriate`)
 	assert(boss.slamTelegraphDuration >= 0.75, `boss tier {tier} has no usable dodge window`)
 	assert(boss.slamMaxHeroHpRatio <= 0.45, `boss tier {tier} can one-shot the commander`)

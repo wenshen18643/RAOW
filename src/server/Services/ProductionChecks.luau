@@ -23,7 +23,7 @@ end
 
 function ProductionChecks.run()
 	check(#Ages == 5, "PvP progression must contain exactly five ages")
-	check(PvELevels.MAX_LEVEL == 25 and PvELevels.isFinalLevel(25), "PvE campaign must have a clear 25-stage endpoint")
+	check(PvELevels.difficultyForLevel("Normal", 100).hpMult > PvELevels.difficultyForLevel("Normal", 50).hpMult, "endless PvE difficulty must keep scaling")
 	check(#GameConfig.PASSIVE_INCOME_BY_AGE == #Ages, "income table must cover every age")
 	check(#GameConfig.BASE_HP_MULT_BY_AGE == #Ages, "base HP table must cover every age")
 	check(GameConfig.ESCALATION_START < GameConfig.SUDDEN_DEATH_START, "match pacing phases are out of order")

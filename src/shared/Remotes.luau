@@ -18,7 +18,7 @@ local NAMES = {
 	"ResultAction", -- ("replay" | "next" | "menu") explicit post-match choice
 	"RequestProfile", -- () client asks for a ProfileSync once its listener is ready
 	"RequestLeaderboard", -- (boardType: string?) client asks for the current top-rating board
-	"StartPveLevel", -- (level: number) client requests level N
+	"StartPveLevel", -- (mode: string, level: number) client requests level N of a difficulty mode
 	"BuyPveUpgrade", -- (trackOrPerkId: string)
 	"ClaimDailyBonds", -- () claim the once-per-UTC-day cosmetic allowance
 	"BuyCosmetic", -- (cosmeticId: string) spend War Bonds

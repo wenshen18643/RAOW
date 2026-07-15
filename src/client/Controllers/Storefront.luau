@@ -48,7 +48,7 @@ local function button(parent: Instance, value: string, position: UDim2, size: UD
 	return item
 end
 
-function Storefront.attach(menuRoot: Frame): () -> ()
+function Storefront.attach(menuRoot: Frame, onOpenRequested: (() -> ())?): (() -> (), () -> ())
 	local profile: any = {
 		warBonds = 0,
 		ownedCosmetics = {},
@@ -209,10 +209,20 @@ function Storefront.attach(menuRoot: Frame): () -> ()
 	end)
 
 	local function open()
+		if onOpenRequested then onOpenRequested() end
 		panel.Visible = true
 		refresh()
 	end
+	local function close()
+		panel.Visible = false
+	end
 	armoryButton = button(menuRoot, "ARMORY", UDim2.fromScale(0.09, 0.60), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(105, 75, 145), 4, open)
+	-- match the main-menu rail buttons: same corner radius and text inset so all
+	-- three sidebar buttons (LEADERBOARD / UPGRADES / ARMORY) render identically
+	local railPad = Instance.new("UIPadding")
+	railPad.PaddingTop = UDim.new(0.22, 0)
+	railPad.PaddingBottom = UDim.new(0.22, 0)
+	railPad.Parent = armoryButton
 
 	Remotes.ProfileSync.OnClientEvent:Connect(function(newProfile)
 		if typeof(newProfile) == "table" then
@@ -221,7 +231,7 @@ function Storefront.attach(menuRoot: Frame): () -> ()
 		end
 	end)
 	refresh()
-	return open
+	return open, close
 end
 
 return Storefront

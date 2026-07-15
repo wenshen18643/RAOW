@@ -106,7 +106,7 @@ function Weapon.start()
 	ContextActionService:BindAction("HeroSecondaryAttack", gamepadSecondary, false, Enum.KeyCode.ButtonL2)
 
 	if UserInputService.TouchEnabled then
-		local hud = playerGui:WaitForChild("GameHUD")
+		local hud = player:WaitForChild("PlayerGui"):WaitForChild("GameHUD")
 		local function touchAttack(name: string, caption: string, position: UDim2, secondary: boolean)
 			local button = Instance.new("TextButton")
 			button.Name = name

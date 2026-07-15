@@ -40,10 +40,11 @@ local lastDifficulty = "Normal"
 local lastMode = "PvE"
 local currentLevel = 1
 local currentCoins = 0
-local currentPveLevel = 0
+local currentPveProgress = { Normal = 0, Hard = 0, Impossible = 0 }
 local pveUpgradesState = { unitHp = 0, unitDamage = 0, startingGold = 0 }
 local pvePerksState: {string} = {}
 local lastPveLevelPlayed = 0 -- the PvE level of the match in progress (from StateUpdate)
+local selectedPveMode = "Normal"
 
 -- Shows the guaranteed next-level currency plus the next milestone collectible.
 local function nextUnlockText(level: number): string?
@@ -278,7 +279,10 @@ function MainMenu.start()
 	menuRoot.Active = true
 	menuRoot.ZIndex = 1
 	menuRoot.Parent = gui
-	local openStorefront = Storefront.attach(menuRoot)
+	local closePanels: () -> ()
+	local openStorefront, closeStorefront = Storefront.attach(menuRoot, function()
+		if closePanels then closePanels() end
+	end)
 	local grad = Instance.new("UIGradient")
 	grad.Rotation = 90
 	grad.Transparency = NumberSequence.new({
@@ -359,21 +363,20 @@ function MainMenu.start()
 
 	-- panels
 	local modePanel = panel(gui, UDim2.new(0.46, 0, 0.5, 0))
-	local diffPanel = panel(gui, UDim2.new(0.46, 0, 0.58, 0))
 	local levelsPanel = panel(gui, UDim2.new(0.55, 0, 0.65, 0))
 	local pveUpgradesPanel = panel(gui, UDim2.new(0.5, 0, 0.65, 0))
 	local settingsPanel = panel(gui, UDim2.new(0.5, 0, 0.72, 0))
 	local helpPanel = panel(gui, UDim2.new(0.5, 0, 0.66, 0))
 	local boardPanel = panel(gui, UDim2.new(0.38, 0, 0.62, 0))
 
-	local function closePanels()
+	closePanels = function()
 		modePanel.Visible = false
-		diffPanel.Visible = false
 		levelsPanel.Visible = false
 		pveUpgradesPanel.Visible = false
 		settingsPanel.Visible = false
 		helpPanel.Visible = false
 		boardPanel.Visible = false
+		if closeStorefront then closeStorefront() end
 	end
 
 	-- main buttons (direct children of menuRoot so input isn't blocked by an intermediate holder)
@@ -418,45 +421,31 @@ function MainMenu.start()
 		ZIndex = 11,
 	})
 
-	button(modePanel, "PvE CLASSIC", UDim2.fromScale(0.5, 0.25), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(50, 130, 70), function()
-		closePanels()
-		diffPanel.Visible = true
-	end).ZIndex = 11
-	label(modePanel, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.32, 0),
-		Size = UDim2.new(0.7, 0, 0.035, 0),
-		Text = "Fight the AI across five ages.",
-		TextColor3 = Color3.fromRGB(170, 170, 180),
-		ZIndex = 11,
-	})
-
 	local refreshLevelsUI: () -> ()
-	local levelsPage = 1 -- 20 levels per page; the campaign ends at stage 25
-	button(modePanel, "PvE LEVELS", UDim2.fromScale(0.5, 0.5), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(150, 90, 40), function()
+	local levelsPage = 1 -- 20 levels per page; the campaign is endless
+	button(modePanel, "PvE", UDim2.fromScale(0.5, 0.4), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(50, 130, 70), function()
 		closePanels()
-		-- open on the page containing the next uncleared level
-		levelsPage = math.floor(currentPveLevel / 20) + 1
+		levelsPage = math.floor((currentPveProgress[selectedPveMode] or 0) / 20) + 1
 		refreshLevelsUI()
 		levelsPanel.Visible = true
 	end).ZIndex = 11
 	label(modePanel, {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.57, 0),
+		Position = UDim2.new(0.5, 0, 0.47, 0),
 		Size = UDim2.new(0.7, 0, 0.035, 0),
-		Text = "Conquer 25 stages. Defeat a boss every 5 stages.",
+		Text = "Endless stages across three difficulties. Boss every 5 levels.",
 		TextColor3 = Color3.fromRGB(170, 170, 180),
 		ZIndex = 11,
 	})
 
-	button(modePanel, "PvP 1v1", UDim2.fromScale(0.5, 0.75), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(60, 100, 160), function()
+	button(modePanel, "PvP 1v1", UDim2.fromScale(0.5, 0.62), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(60, 100, 160), function()
 		Remotes.SelectMode:FireServer("pvp", "Normal")
 		closePanels()
 		-- menu stays open so the queue status overlay is visible
 	end).ZIndex = 11
 	label(modePanel, {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.82, 0),
+		Position = UDim2.new(0.5, 0, 0.69, 0),
 		Size = UDim2.new(0.7, 0, 0.035, 0),
 		Text = "Ranked matchmaking against another player.",
 		TextColor3 = Color3.fromRGB(170, 170, 180),
@@ -468,63 +457,65 @@ function MainMenu.start()
 	end).ZIndex = 11
 
 	--------------------------------------------------------------------------------
-	-- difficulty panel (PvE)
-	--------------------------------------------------------------------------------
-	label(diffPanel, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.06, 0),
-		Size = UDim2.new(0.8, 0, 0.14, 0),
-		Text = "PvE DIFFICULTY",
-		ZIndex = 11,
-	})
-
-	local function startPve(diffId: string)
-		Remotes.SelectMode:FireServer("pve", diffId)
-		closePanels()
-		menuRoot.Visible = false
-		menuOpen = false
-		stopOrbit()
-		GameUI.setHudVisible(true)
-	end
-
-	local diffs: { { string | Color3 } } = {
-		{ "NORMAL", "Standard AI pacing and stats.", Color3.fromRGB(60, 140, 70), "Normal" },
-		{ "HARDER", "Stronger AI with reactive counter-spawns.", Color3.fromRGB(190, 130, 50), "Harder" },
-		{ "IMPOSSIBLE", "Max difficulty. The AI plays to win.", Color3.fromRGB(170, 60, 60), "Impossible" },
-	}
-	for i, d in diffs do
-		local y = 0.22 + i * 0.19
-		button(diffPanel, d[1] :: string, UDim2.fromScale(0.5, y), UDim2.new(0.55, 0, 0.11, 0), d[3] :: Color3, function()
-			startPve(d[4] :: string)
-		end).ZIndex = 11
-		label(diffPanel, {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, y + 0.06, 0),
-			Size = UDim2.new(0.7, 0, 0.03, 0),
-			Text = d[2] :: string,
-			TextColor3 = Color3.fromRGB(170, 170, 180),
-			ZIndex = 11,
-		})
-	end
-	button(diffPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.08, 0), Color3.fromRGB(60, 60, 70), function()
-		closePanels()
-		modePanel.Visible = true
-	end).ZIndex = 11
-
-	--------------------------------------------------------------------------------
 	-- levels panel
 	--------------------------------------------------------------------------------
 	label(levelsPanel, {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.04, 0),
+		Position = UDim2.new(0.5, 0, 0.02, 0),
 		Size = UDim2.new(0.8, 0, 0.08, 0),
 		Text = "PvE LEVELS",
 		ZIndex = 11,
 	})
 	
+	local diffTabsContainer = Instance.new("Frame")
+	diffTabsContainer.Position = UDim2.new(0.05, 0, 0.12, 0)
+	diffTabsContainer.Size = UDim2.new(0.9, 0, 0.08, 0)
+	diffTabsContainer.BackgroundTransparency = 1
+	diffTabsContainer.ZIndex = 11
+	diffTabsContainer.Parent = levelsPanel
+	
+	local updateDiffTabs: () -> ()
+	
+	local diffConfigs = {
+		{ id = "Normal", name = "NORMAL", color = Color3.fromRGB(60, 140, 70) },
+		{ id = "Hard", name = "HARD", color = Color3.fromRGB(190, 130, 50) },
+		{ id = "Impossible", name = "IMPOSSIBLE", color = Color3.fromRGB(170, 60, 60) },
+	}
+	
+	local diffButtons: { [string]: { btn: TextButton, stroke: UIStroke, color: Color3 } } = {}
+	for i, d in diffConfigs do
+		local w = 0.32
+		local x = (i - 1) * 0.34
+		local btn = button(diffTabsContainer, d.name, UDim2.fromScale(x + w/2, 0.5), UDim2.fromScale(w, 1), d.color, function()
+			selectedPveMode = d.id
+			levelsPage = math.floor((currentPveProgress[selectedPveMode] or 0) / 20) + 1
+			updateDiffTabs()
+			refreshLevelsUI()
+		end)
+		btn.ZIndex = 12
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = GOLD
+		stroke.Thickness = 2
+		stroke.Transparency = 1
+		stroke.Parent = btn
+		diffButtons[d.id] = { btn = btn, stroke = stroke, color = d.color }
+	end
+	
+	updateDiffTabs = function()
+		for id, data in diffButtons do
+			if id == selectedPveMode then
+				data.btn.BackgroundColor3 = data.color
+				data.stroke.Transparency = 0
+			else
+				data.btn.BackgroundColor3 = data.color:Lerp(Color3.new(0,0,0), 0.6)
+				data.stroke.Transparency = 1
+			end
+		end
+	end
+	
 	local levelsScroll = Instance.new("ScrollingFrame")
-	levelsScroll.Position = UDim2.new(0.05, 0, 0.15, 0)
-	levelsScroll.Size = UDim2.new(0.9, 0, 0.55, 0)
+	levelsScroll.Position = UDim2.new(0.05, 0, 0.22, 0)
+	levelsScroll.Size = UDim2.new(0.9, 0, 0.48, 0)
 	levelsScroll.BackgroundTransparency = 1
 	levelsScroll.ScrollBarThickness = 6
 	levelsScroll.ZIndex = 11
@@ -539,7 +530,7 @@ function MainMenu.start()
 	local LEVELS_PER_PAGE = 20
 
 	local function startLevel(lvl: number)
-		Remotes.StartPveLevel:FireServer(lvl)
+		Remotes.StartPveLevel:FireServer(selectedPveMode, lvl)
 		closePanels()
 		menuRoot.Visible = false
 		menuOpen = false
@@ -563,33 +554,33 @@ function MainMenu.start()
 		ZIndex = 11,
 	})
 	local nextPageBtn = button(levelsPanel, ">", UDim2.fromScale(0.72, 0.745), UDim2.new(0.08, 0, 0.06, 0), Color3.fromRGB(60, 60, 70), function()
-		if levelsPage * LEVELS_PER_PAGE < PvELevels.MAX_LEVEL then
-			levelsPage += 1
-			refreshLevelsUI()
-		end
+		levelsPage += 1
+		refreshLevelsUI()
 	end)
 	nextPageBtn.ZIndex = 11
 
 	local playNextBtn = button(levelsPanel, "PLAY NEXT — LEVEL 1", UDim2.fromScale(0.5, 0.845), UDim2.new(0.5, 0, 0.07, 0), Color3.fromRGB(150, 110, 40), function()
-		if currentPveLevel < PvELevels.MAX_LEVEL then startLevel(currentPveLevel + 1) end
+		startLevel((currentPveProgress[selectedPveMode] or 0) + 1)
 	end)
 	playNextBtn.ZIndex = 11
 
 	refreshLevelsUI = function()
+		updateDiffTabs()
+		local prog = currentPveProgress[selectedPveMode] or 0
 		for _, child in levelsScroll:GetChildren() do
 			if child:IsA("TextButton") then child:Destroy() end
 		end
 		local firstLevel = (levelsPage - 1) * LEVELS_PER_PAGE + 1
-		local lastLevel = math.min(levelsPage * LEVELS_PER_PAGE, PvELevels.MAX_LEVEL)
+		local lastLevel = levelsPage * LEVELS_PER_PAGE
 		pageLabel.Text = `Levels {firstLevel} - {lastLevel}`
 		prevPageBtn.Visible = levelsPage > 1
-		nextPageBtn.Visible = lastLevel < PvELevels.MAX_LEVEL
-		playNextBtn.Text = currentPveLevel < PvELevels.MAX_LEVEL and `PLAY NEXT — LEVEL {currentPveLevel + 1}` or "CAMPAIGN COMPLETE"
-		playNextBtn.BackgroundColor3 = currentPveLevel < PvELevels.MAX_LEVEL and Color3.fromRGB(150, 110, 40) or Color3.fromRGB(50, 100, 60)
+		nextPageBtn.Visible = true
+		playNextBtn.Text = `PLAY NEXT — LEVEL {prog + 1}`
+		playNextBtn.BackgroundColor3 = Color3.fromRGB(150, 110, 40)
 		for lvl = firstLevel, lastLevel do
 			local isBoss = PvELevels.isBossLevel(lvl)
-			local isLocked = lvl > currentPveLevel + 1
-			local isNext = lvl == currentPveLevel + 1
+			local isLocked = lvl > prog + 1
+			local isNext = lvl == prog + 1
 			local color = isLocked and Color3.fromRGB(40, 40, 45) 
 				or (isNext and Color3.fromRGB(150, 110, 40) or (isBoss and Color3.fromRGB(180, 50, 50) or Color3.fromRGB(60, 100, 140)))
 				
@@ -602,24 +593,24 @@ function MainMenu.start()
 			btn.ZIndex = 12
 			
 			label(btn, {
-				Position = UDim2.new(0, 0, 0.1, 0), Size = UDim2.new(1, 0, 0.3, 0),
+				Position = UDim2.new(0, 0, 0.05, 0), Size = UDim2.new(1, 0, 0.25, 0),
 				Text = `Lv {lvl}`, TextColor3 = isLocked and Color3.fromRGB(100,100,100) or Color3.new(1,1,1), ZIndex = 13
 			})
-			if PvELevels.isFinalLevel(lvl) then
+			if isBoss then
 				label(btn, {
-					Position = UDim2.new(0, 0, 0.45, 0), Size = UDim2.new(1, 0, 0.25, 0),
-					Text = "FINAL BOSS", TextColor3 = isLocked and Color3.fromRGB(120,60,60) or GOLD, ZIndex = 13
-				})
-			elseif isBoss then
-				label(btn, {
-					Position = UDim2.new(0, 0, 0.45, 0), Size = UDim2.new(1, 0, 0.25, 0),
+					Position = UDim2.new(0, 0, 0.35, 0), Size = UDim2.new(1, 0, 0.2, 0),
 					Text = "BOSS", TextColor3 = isLocked and Color3.fromRGB(120,60,60) or Color3.new(1,0.8,0.8), ZIndex = 13
 				})
 			end
 			if isLocked then
 				label(btn, {
-					Position = UDim2.new(0, 0, 0.7, 0), Size = UDim2.new(1, 0, 0.2, 0),
+					Position = UDim2.new(0, 0, 0.65, 0), Size = UDim2.new(1, 0, 0.2, 0),
 					Text = "LOCKED", TextColor3 = Color3.fromRGB(150,50,50), ZIndex = 13
+				})
+			elseif isNext then
+				label(btn, {
+					Position = UDim2.new(0, 0, 0.65, 0), Size = UDim2.new(1, 0, 0.25, 0),
+					Text = `+{PvELevels.coinsForClear(selectedPveMode, lvl, false)}c`, TextColor3 = Color3.fromRGB(240, 200, 80), ZIndex = 13
 				})
 			end
 		end
@@ -729,7 +720,8 @@ function MainMenu.start()
 	-- first-battle signpost (new players only): straight into a guided PvE match
 	--------------------------------------------------------------------------------
 	local firstBattleBtn = button(menuRoot, "FIRST BATTLE  —  WIN FOR 300 XP", UDim2.fromScale(0.5, 0.325), UDim2.new(0.28, 0, 0.06, 0), Color3.fromRGB(170, 130, 30), function()
-		startPve("Normal")
+		selectedPveMode = "Normal"
+		startLevel((currentPveProgress.Normal or 0) + 1)
 	end)
 	firstBattleBtn.Visible = false
 	local fbStroke = Instance.new("UIStroke")
@@ -920,7 +912,7 @@ function MainMenu.start()
 	local resultRematchReady = 0
 	local resultPrimary: TextButton
 	resultPrimary = button(results, "PLAY AGAIN", UDim2.fromScale(0.38, 0.75), UDim2.new(0.2, 0, 0.065, 0), Color3.fromRGB(55, 125, 75), function()
-		local action = if lastMode == "PvE-Levels" and resultCanNextStage then "next" else "replay"
+		local action = if lastMode == "PvE" and resultCanNextStage then "next" else "replay"
 		Remotes.ResultAction:FireServer(action)
 		resultWaitingRematch = lastMode == "PvP"
 		if resultWaitingRematch then resultRematchReady = math.max(resultRematchReady, 1) end
@@ -944,7 +936,7 @@ function MainMenu.start()
 		resultTitle.Text = won and "VICTORY" or "DEFEAT"
 		resultTitle.TextColor3 = won and Color3.fromRGB(120, 230, 120) or Color3.fromRGB(230, 90, 80)
 		local ratingText = ratingDelta and `\nRating:  {ratingDelta >= 0 and "+" or ""}{ratingDelta}` or ""
-		local modeText = lastMode == "PvP" and "1v1 PvP" or (lastMode == "PvE-Levels" and `PvE Level {lastPveLevelPlayed}` or `PvE • {lastDifficulty:upper()}`)
+		local modeText = lastMode == "PvP" and "1v1 PvP" or `PvE {lastDifficulty:upper()} Level {lastPveLevelPlayed}`
 		
 		local xpText = ""
 		if xpData then
@@ -966,12 +958,12 @@ function MainMenu.start()
 		local bondsText = dailyWarBonds and dailyWarBonds > 0 and `\nDaily Orders: +{dailyWarBonds} War Bonds` or ""
 		
 		resultStats.Text = `Mode:  {modeText}\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}{xpText}{coinsText}{bondsText}`
-		resultCanNextStage = lastMode == "PvE-Levels" and won and canNextStage == true
+		resultCanNextStage = lastMode == "PvE" and won and canNextStage == true
 		resultWaitingRematch = false
 		resultRematchReady = 0
 		resultPrimary.Text = if lastMode == "PvP" then "REQUEST REMATCH"
 			elseif resultCanNextStage then `NEXT STAGE  ({lastPveLevelPlayed + 1})`
-			elseif lastMode == "PvE-Levels" then "REPLAY STAGE"
+			elseif lastMode == "PvE" then "REPLAY STAGE"
 			else "PLAY AGAIN"
 		resultPrimary.Active = true
 		resultPrimary.BackgroundColor3 = Color3.fromRGB(55, 125, 75)
@@ -1009,13 +1001,13 @@ function MainMenu.start()
 			end
 			currentLevel = profile.level
 			currentCoins = profile.coins or 0
-			currentPveLevel = profile.pveLevel or 0
+			currentPveProgress = profile.pveProgress or { Normal = profile.pveLevel or 0, Hard = 0, Impossible = 0 }
 			pveUpgradesState = profile.pveUpgrades or { unitHp = 0, unitDamage = 0, startingGold = 0 }
 			pvePerksState = profile.pvePerks or {}
 			
 			if pveUpgradesPanel.Visible then refreshUpgradesUI() end
 			if levelsPanel.Visible then refreshLevelsUI() end
-			
+
 			local equippedTitle = MonetizationConfig.cosmeticById(profile.equippedTitle or "")
 			levelLabel.Text = equippedTitle and `LEVEL {profile.level}  •  {string.upper(equippedTitle.name)}` or `LEVEL {profile.level}`
 			local nextXp = ProgressionConfig.xpForLevel(profile.level + 1)
@@ -1072,7 +1064,9 @@ function MainMenu.start()
 			if typeof(state.ageName) == "string" then
 				lastAgeName = state.ageName
 			end
-			if typeof(state.difficulty) == "string" then
+			if typeof(state.pveMode) == "string" then
+				lastDifficulty = state.pveMode
+			elseif typeof(state.difficulty) == "string" then
 				lastDifficulty = state.difficulty
 			end
 			if typeof(state.mode) == "string" then

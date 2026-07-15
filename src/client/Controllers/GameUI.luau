@@ -760,17 +760,15 @@ local function refresh(state: { [string]: any })
 	end
 
 	if state.difficulty then
-		if state.mode == "PvE-Levels" then
-			diffLabel.Text = `CAMPAIGN {state.pveLevel or 1} / 25`
-		elseif state.mode == "PvE" then
-			diffLabel.Text = `PvE • {string.upper(state.difficulty)}`
+		if state.mode == "PvE" then
+			diffLabel.Text = `{string.upper(state.pveMode or "Normal")} • LEVEL {state.pveLevel or 1}`
 		elseif state.opponentName then
 			diffLabel.Text = `VS {state.opponentName}`
 		else
 			diffLabel.Text = "Mode: 1v1 PvP"
 		end
-		local colors = { Normal = Color3.fromRGB(150, 200, 150), Harder = Color3.fromRGB(200, 180, 120), Impossible = Color3.fromRGB(220, 120, 120) }
-		diffLabel.TextColor3 = colors[state.difficulty] or Color3.new(1, 1, 1)
+		local colors = { Normal = Color3.fromRGB(150, 200, 150), Hard = Color3.fromRGB(200, 180, 120), Impossible = Color3.fromRGB(220, 120, 120) }
+		diffLabel.TextColor3 = colors[state.pveMode or state.difficulty] or Color3.new(1, 1, 1)
 	end
 
 	evolveBtn.Visible = state.nextAgeXp ~= nil
