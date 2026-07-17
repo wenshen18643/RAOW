@@ -132,6 +132,17 @@ local function fetchTop(isPve: boolean?): { Row }
 	return rows
 end
 
+-- Server-side consumers (e.g. the lobby leaderboard wall) share the same cache.
+function Leaderboard.getTop(isPve: boolean?): { Row }
+	local now = os.clock()
+	local cacheTime = isPve and cachedPveAt or cachedAt
+	local cache = isPve and cachedPveRows or cachedRows
+	if now - cacheTime < CACHE_TTL and #cache > 0 then
+		return cache
+	end
+	return fetchTop(isPve)
+end
+
 local lastRequest: { [Player]: number } = {}
 
 Remotes.RequestLeaderboard.OnServerEvent:Connect(function(player, boardType: string?)

@@ -485,6 +485,24 @@ end
 
 -- Applies one idempotent match result to both loaded profiles. The caller owns
 -- match-level idempotency and invokes this exactly once per match.
+-- Rated match against a bot opponent: same Elo curve, but at half stakes so
+-- the ladder can't be farmed through fallback matches.
+function PlayerData.recordBotMatch(player: Player, botRating: number, won: boolean): number
+	local profile = cache[player]
+	if not profile then return 0 end
+	local expected = 1 / (1 + 10 ^ ((botRating - profile.rating) / 400))
+	local delta
+	if won then
+		delta = math.max(1, math.round(32 * (1 - expected) * 0.5))
+		profile.wins += 1
+	else
+		delta = -math.max(1, math.round(32 * expected * 0.5))
+		profile.losses += 1
+	end
+	profile.rating = math.clamp(profile.rating + delta, 0, 5000)
+	return delta
+end
+
 function PlayerData.recordMatch(winner: Player, loser: Player): (number, number)
 	local winnerProfile = cache[winner]
 	local loserProfile = cache[loser]

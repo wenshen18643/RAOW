@@ -261,6 +261,14 @@ end
 --------------------------------------------------------------------------------
 
 function MainMenu.start()
+	local lobbyHud: Frame? = nil
+	local serverType = workspace:GetAttribute("ServerType")
+	if not serverType then
+		workspace:GetAttributeChangedSignal("ServerType"):Wait()
+		serverType = workspace:GetAttribute("ServerType")
+	end
+	local isLobbyServer = (serverType == "lobby")
+
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "MainMenu"
 	gui.ResetOnSpawn = false
@@ -711,9 +719,8 @@ function MainMenu.start()
 		upgradesScroll.CanvasSize = UDim2.new(0, 0, 0, layoutOrder * 58)
 	end
 	
-	button(pveUpgradesPanel, "BACK", UDim2.fromScale(0.5, 0.93), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
+	button(pveUpgradesPanel, isLobbyServer and "CLOSE" or "BACK", UDim2.fromScale(0.5, 0.93), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
 		closePanels()
-		-- return to main menu
 	end).ZIndex = 11
 
 	--------------------------------------------------------------------------------
@@ -824,7 +831,7 @@ function MainMenu.start()
 	end)
 	numbersBtn.ZIndex = 11
 	refreshComfortButtons()
-	button(settingsPanel, "BACK", UDim2.fromScale(0.5, 0.9), UDim2.new(0.24, 0, 0.075, 0), Color3.fromRGB(60, 60, 70), function()
+	button(settingsPanel, isLobbyServer and "CLOSE" or "BACK", UDim2.fromScale(0.5, 0.9), UDim2.new(0.24, 0, 0.075, 0), Color3.fromRGB(60, 60, 70), function()
 		settingsPanel.Visible = false
 	end).ZIndex = 11
 
@@ -930,6 +937,7 @@ function MainMenu.start()
 	end).ZIndex = 9
 
 	local function showResults(won: boolean, decisionIn: number, ratingDelta: number?, xpData: any, coins: number?, firstClear: boolean?, dailyWarBonds: number?, canNextStage: boolean?)
+		if lobbyHud then lobbyHud.Visible = false end
 		local dur = os.clock() - matchStartAt
 		local mins = math.floor(dur / 60)
 		local secs = math.floor(dur % 60)
@@ -1090,6 +1098,7 @@ function MainMenu.start()
 			menuOpen = false
 			stopOrbit()
 			GameUI.setHudVisible(true)
+			if lobbyHud then lobbyHud.Visible = false end
 		elseif event == "RematchStatus" and data then
 			resultRematchReady = data.ready or 0
 			resultCountdown.Text = `Rematch ready: {resultRematchReady}/{data.required or 2} players`
@@ -1098,17 +1107,118 @@ function MainMenu.start()
 		elseif event == "ReturnToMenu" then
 			results.Visible = false
 			closePanels()
-			menuRoot.Visible = true
-			menuOpen = true
-			startOrbit()
-			GameUI.setHudVisible(false)
+			if isLobbyServer then
+				menuRoot.Visible = false
+				menuOpen = false
+				stopOrbit()
+				GameUI.setHudVisible(true)
+				GameUI.setQueueMode(true)
+				if lobbyHud then lobbyHud.Visible = true end
+			else
+				menuRoot.Visible = true
+				menuOpen = true
+				startOrbit()
+				GameUI.setHudVisible(false)
+			end
 		end
 	end)
 
-	-- open the menu on join
-	menuOpen = true
-	GameUI.setHudVisible(false)
-	startOrbit()
+	if isLobbyServer then
+		menuOpen = false
+		menuRoot.Visible = false
+		stopOrbit()
+		GameUI.setHudVisible(true)
+		GameUI.setQueueMode(true)
+
+		-- Find the storefront panel (with ZIndex 60) for visibility tracking
+		local storefrontPanel = nil
+		for _, child in gui:GetChildren() do
+			if child:IsA("Frame") and child.ZIndex == 60 then
+				storefrontPanel = child
+				break
+			end
+		end
+
+		-- Click-sinking background overlay for panels in the lobby
+		local lobbyBackdrop = Instance.new("Frame")
+		lobbyBackdrop.Name = "LobbyBackdrop"
+		lobbyBackdrop.Size = UDim2.fromScale(1, 1)
+		lobbyBackdrop.BackgroundColor3 = Color3.new(0, 0, 0)
+		lobbyBackdrop.BackgroundTransparency = 0.4
+		lobbyBackdrop.BorderSizePixel = 0
+		lobbyBackdrop.Active = true
+		lobbyBackdrop.Visible = false
+		lobbyBackdrop.ZIndex = 8
+		lobbyBackdrop.Parent = gui
+
+		local function updateBackdrop()
+			local storefrontVisible = if storefrontPanel then storefrontPanel.Visible else false
+			lobbyBackdrop.Visible = pveUpgradesPanel.Visible or settingsPanel.Visible or storefrontVisible
+		end
+
+		pveUpgradesPanel:GetPropertyChangedSignal("Visible"):Connect(updateBackdrop)
+		settingsPanel:GetPropertyChangedSignal("Visible"):Connect(updateBackdrop)
+		if storefrontPanel then
+			storefrontPanel:GetPropertyChangedSignal("Visible"):Connect(updateBackdrop)
+		end
+
+		-- Build slim persistent HUD
+		local GuiService = game:GetService("GuiService")
+		lobbyHud = Instance.new("Frame")
+		lobbyHud.Name = "LobbyHUD"
+		lobbyHud.Position = UDim2.new(0, 15, 0, 15)
+		lobbyHud.Size = UDim2.new(0, 380, 0, 48)
+		lobbyHud.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+		lobbyHud.BackgroundTransparency = 0.25
+		lobbyHud.BorderSizePixel = 0
+		lobbyHud.ZIndex = 5
+		lobbyHud.Parent = gui
+		corner(lobbyHud, 8)
+
+		local lobbyStroke = Instance.new("UIStroke")
+		lobbyStroke.Color = GOLD
+		lobbyStroke.Thickness = 1.5
+		lobbyStroke.Transparency = 0.4
+		lobbyStroke.Parent = lobbyHud
+
+		local layout = Instance.new("UIListLayout")
+		layout.FillDirection = Enum.FillDirection.Horizontal
+		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		layout.VerticalAlignment = Enum.VerticalAlignment.Center
+		layout.Padding = UDim.new(0, 10)
+		layout.Parent = lobbyHud
+
+		-- SHOP button (opens storefront)
+		button(lobbyHud, "SHOP", UDim2.new(0, 0, 0.5, 0), UDim2.new(0, 110, 0, 32), Color3.fromRGB(110, 70, 160), function()
+			closePanels()
+			openStorefront()
+		end)
+
+		-- UPGRADES button
+		button(lobbyHud, "UPGRADES", UDim2.new(0, 0, 0.5, 0), UDim2.new(0, 110, 0, 32), Color3.fromRGB(150, 110, 30), function()
+			closePanels()
+			refreshUpgradesUI()
+			pveUpgradesPanel.Visible = true
+		end)
+
+		-- SETTINGS button
+		button(lobbyHud, "SETTINGS", UDim2.new(0, 0, 0.5, 0), UDim2.new(0, 110, 0, 32), Color3.fromRGB(55, 65, 90), function()
+			closePanels()
+			settingsPanel.Visible = true
+		end)
+
+		local function adjustLobbyHud()
+			local offset = math.max(GuiService.TopbarInset.Height, 0)
+			lobbyHud.Position = UDim2.new(0, 15, 0, 15 + offset)
+		end
+		GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(adjustLobbyHud)
+		adjustLobbyHud()
+	else
+		menuOpen = true
+		menuRoot.Visible = true
+		GameUI.setHudVisible(false)
+		startOrbit()
+	end
 end
 
 return MainMenu

@@ -27,6 +27,8 @@ local PlayerData = require(Services.PlayerData)
 local Telemetry = require(Services.Telemetry)
 local MatchmakingService = require(Services.MatchmakingService)
 local LobbyBuilder = require(Services.LobbyBuilder)
+local LobbyFlex = require(Services.LobbyFlex)
+local LobbyBots = require(Services.LobbyBots)
 local MonetizationService = require(Services.MonetizationService)
 require(Services.ProductionChecks).run()
 MonetizationService.start()
@@ -37,8 +39,17 @@ local isReservedMatch = game.PrivateServerId ~= "" and game.PrivateServerOwnerId
 local isStudio = RunService:IsStudio()
 local isLobby = not isStudio and not isReservedMatch
 
-local map = MapBuilder.build()
-Environment.setup(map)
+local serverType = isReservedMatch and "match" or "lobby"
+workspace:SetAttribute("ServerType", serverType)
+
+-- The match world only exists where a match can actually run. Live lobby
+-- servers skip it entirely: it buried the lobby island in map geometry and
+-- doubled load time for players who never see the arena.
+local map: MapBuilder.MapHandle? = nil
+if isStudio or isReservedMatch then
+	map = MapBuilder.build()
+	Environment.setup(map :: MapBuilder.MapHandle)
+end
 
 local currentMatch: Match.Match? = nil
 local playerSides: { [Player]: string } = {}
@@ -100,8 +111,10 @@ local MATCH_JOIN_TIMEOUT = 60
 local joinTimeoutScheduled = false
 
 local function resetMap()
-	for _, base in map.bases do
-		MapBuilder.evolveBase(map, base.side, 1, Ages[1].color)
+	local m = map
+	if not m then return end
+	for _, base in m.bases do
+		MapBuilder.evolveBase(m, base.side, 1, Ages[1].color)
 		base.core:SetAttribute("Hp", GameConfig.BASE_MAX_HP)
 		base.core.Color = base.side == "A" and Color3.fromRGB(52, 120, 200) or Color3.fromRGB(200, 70, 60)
 	end
@@ -123,6 +136,12 @@ local function clearMatchState()
 	actionTimes = {}
 	expectedMatchId = nil
 	joinTimeoutScheduled = false
+
+	if isLobby or isStudio then
+		for _, player in Players:GetPlayers() do
+			player.CameraMode = Enum.CameraMode.Classic
+		end
+	end
 end
 
 local function teleportToLobby(players: { Player }): boolean
@@ -151,7 +170,40 @@ local function wireMatch(match: Match.Match)
 		if match.resultCommitted then return end
 		match.resultCommitted = true
 
-		if matchMode == "PvE" then
+		if match.botMatch then
+			local player = sidePlayers["A"]
+			if player then
+				local won = winner == "A"
+				local delta = PlayerData.recordBotMatch(player, match.botRating or 1000, won)
+				local xpResult = PlayerData.addXp(player, won and ProgressionConfig.XP_WIN or ProgressionConfig.XP_LOSS)
+				PlayerData.addCoins(player, won and PvELevels.PVP_WIN_COINS or PvELevels.PVP_LOSS_COINS)
+				local dailyWarBonds = PlayerData.recordDailyBattle(player, won)
+				if dailyWarBonds > 0 then Telemetry.event(player, "daily_battle_bonds_earned", dailyWarBonds) end
+				PlayerData.sync(player)
+				task.spawn(function() PlayerData.save(player) end)
+				Telemetry.event(player, won and "pvp_bot_match_won" or "pvp_bot_match_lost", os.clock() - match.startedAt)
+				Remotes.MatchEvent:FireClient(player, won and "Victory" or "Defeat", {
+					decisionIn = RESULT_TIMEOUT,
+					ratingDelta = delta,
+					xpData = xpResult,
+					coins = won and PvELevels.PVP_WIN_COINS or PvELevels.PVP_LOSS_COINS,
+					dailyWarBonds = dailyWarBonds,
+				})
+			end
+			task.delay(RESULT_TIMEOUT, function()
+				if currentMatch ~= match then return end
+				local survivors = Players:GetPlayers()
+				if isStudio then
+					for _, p in survivors do
+						p.CameraMode = Enum.CameraMode.Classic
+						Remotes.MatchEvent:FireClient(p, "ReturnToMenu", {})
+					end
+					clearMatchState()
+				elseif #survivors > 0 then
+					teleportToLobby(survivors)
+				end
+			end)
+		elseif matchMode == "PvE" then
 			local player = sidePlayers["A"]
 			if player then
 				local xpResult
@@ -224,12 +276,19 @@ local function wireMatch(match: Match.Match)
 				end
 			end
 			task.delay(RESULT_TIMEOUT, function()
-				-- In a lobby server the player never left; just clear the match and reopen the menu.
 				if currentMatch ~= match then return end
-				for _, player in Players:GetPlayers() do
-					Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {})
+				if isStudio then
+					for _, player in Players:GetPlayers() do
+						player.CameraMode = Enum.CameraMode.Classic
+						Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {})
+					end
+					clearMatchState()
+				else
+					local survivors = Players:GetPlayers()
+					if #survivors > 0 then
+						teleportToLobby(survivors)
+					end
 				end
-				clearMatchState()
 			end)
 		else
 			local winnerPlayer = sidePlayers[winner]
@@ -276,7 +335,10 @@ local function wireMatch(match: Match.Match)
 				if currentMatch ~= match then return end
 				local survivors = Players:GetPlayers()
 				if isStudio then
-					for _, player in survivors do Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {}) end
+					for _, player in survivors do
+						player.CameraMode = Enum.CameraMode.Classic
+						Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {})
+					end
 					clearMatchState()
 				elseif #survivors > 0 then
 					teleportToLobby(survivors)
@@ -297,10 +359,12 @@ local function startMatch()
 	local match = currentMatch
 	if not match or match.status ~= "Waiting" then return end
 	Match.start(match)
-	Remotes.MatchEvent:FireAllClients("MatchStart", { difficulty = match.difficulty, mode = matchMode })
+	local displayMode = if match.botMatch then "PvP" else matchMode
+	Remotes.MatchEvent:FireAllClients("MatchStart", { difficulty = match.difficulty, mode = displayMode })
 	for _, player in Players:GetPlayers() do
 		local side = sideFor(player)
 		if side then
+			player.CameraMode = Enum.CameraMode.LockFirstPerson
 			player:LoadCharacter()
 			Telemetry.event(player, "match_started", 1, { mode = matchMode, difficulty = match.difficulty })
 		end
@@ -314,7 +378,7 @@ local function startPvELevel(player: Player, mode: string, level: number)
 	end
 	
 	matchMode = "PvE"
-	currentMatch = Match.new(map, "Normal")
+	currentMatch = Match.new(map :: MapBuilder.MapHandle, "Normal")
 	currentMatch.pveLevel = level
 	currentMatch.pveMode = mode
 	currentMatch.mode = matchMode
@@ -338,6 +402,31 @@ local function startPvELevel(player: Player, mode: string, level: number)
 	end
 end
 
+-- Fallback opponent: runs on the PvE sim (AIBrain drives side B) but is
+-- presented to the client as a PvP match against a named opponent.
+local function startBotMatch(player: Player, botName: string, botRating: number)
+	if currentMatch then return end
+	matchMode = "PvE"
+	local difficulty = if botRating < 1100 then "Normal" elseif botRating < 1700 then "Harder" else "Impossible"
+	currentMatch = Match.new(map :: MapBuilder.MapHandle, difficulty)
+	currentMatch.mode = "PvE"
+	currentMatch.botMatch = true
+	currentMatch.botName = botName
+	currentMatch.botRating = botRating
+	-- Synthetic level maps bot strength onto the existing PvE scaling curve;
+	-- boss levels are skipped so the "opponent" never spawns a boss unit.
+	local level = math.clamp(math.round((botRating - 850) / 40), 1, 60)
+	while PvELevels.isBossLevel(level) and level > 1 do
+		level -= 1
+	end
+	currentMatch.pveLevel = level
+	currentMatch.pveMode = "Normal"
+	wireMatch(currentMatch)
+	assignPlayer(player, "A")
+	playerReady[player] = true
+	startMatch()
+end
+
 local function tryStartPvP()
 	local match = currentMatch
 	if not match then return end
@@ -350,53 +439,87 @@ local function tryStartPvP()
 	end
 end
 
-local function initPvPReservedServer()
-	matchMode = "PvP"
-	currentMatch = Match.new(map, DifficultyConfig.DEFAULT)
-	currentMatch.mode = matchMode
-	wireMatch(currentMatch)
+local function initReservedServer()
+	local initialized = false
 
 	Players.PlayerAdded:Connect(function(player)
 		loadPlayerProfile(player)
-		local side: string? = nil
 		local joinData = player:GetJoinData()
 		local teleportData = joinData.TeleportData
-		if typeof(teleportData) == "table"
-			and joinData.SourcePlaceId == game.PlaceId
-			and teleportData.mode == "pvp_match"
-			and typeof(teleportData.matchId) == "string"
-			and typeof(teleportData.createdAt) == "number"
-			and math.abs(os.time() - teleportData.createdAt) <= 600
-			and typeof(teleportData.userIds) == "table" then
-			if expectedMatchId == nil then expectedMatchId = teleportData.matchId end
-			if teleportData.matchId == expectedMatchId then
-				if teleportData.userIds[1] == player.UserId then side = "A" end
-				if teleportData.userIds[2] == player.UserId then side = "B" end
+		
+		local tdMode = typeof(teleportData) == "table" and teleportData.mode or nil
+		if not initialized then
+			if tdMode == "pve_match" or tdMode == "pvp_bot_match" then
+				matchMode = "PvE"
+			else
+				matchMode = "PvP"
+				currentMatch = Match.new(map :: MapBuilder.MapHandle, DifficultyConfig.DEFAULT)
+				currentMatch.mode = matchMode
+				wireMatch(currentMatch)
 			end
+			initialized = true
 		end
-		if not side then
-			player:Kick("Invalid or expired PvP match ticket.")
-			PlayerData.unload(player)
-			return
-		end
-		assignPlayer(player, side)
-		playerReady[player] = true
-		player:LoadCharacter()
-		tryStartPvP()
-		if not joinTimeoutScheduled and currentMatch and currentMatch.status == "Waiting" then
-			joinTimeoutScheduled = true
-			local waitingMatch = currentMatch
-			task.delay(MATCH_JOIN_TIMEOUT, function()
-				if currentMatch ~= waitingMatch or waitingMatch.status ~= "Waiting" then return end
-				local waitingPlayers = Players:GetPlayers()
-				for _, waitingPlayer in waitingPlayers do
-					Remotes.MatchEvent:FireClient(waitingPlayer, "OpponentJoinFailed", {})
+
+		if matchMode == "PvE" then
+			local baseValid = typeof(teleportData) == "table"
+				and joinData.SourcePlaceId == game.PlaceId
+				and typeof(teleportData.userId) == "number"
+				and typeof(teleportData.createdAt) == "number"
+				and math.abs(os.time() - teleportData.createdAt) <= 600
+				and teleportData.userId == player.UserId
+			if baseValid
+				and tdMode == "pve_match"
+				and typeof(teleportData.pveMode) == "string"
+				and typeof(teleportData.pveLevel) == "number" then
+				startPvELevel(player, teleportData.pveMode, teleportData.pveLevel)
+			elseif baseValid
+				and tdMode == "pvp_bot_match"
+				and typeof(teleportData.botName) == "string"
+				and typeof(teleportData.botRating) == "number" then
+				startBotMatch(player, teleportData.botName, teleportData.botRating)
+			else
+				player:Kick("Invalid or expired match ticket.")
+				PlayerData.unload(player)
+			end
+		else
+			local side: string? = nil
+			if typeof(teleportData) == "table"
+				and joinData.SourcePlaceId == game.PlaceId
+				and teleportData.mode == "pvp_match"
+				and typeof(teleportData.matchId) == "string"
+				and typeof(teleportData.createdAt) == "number"
+				and math.abs(os.time() - teleportData.createdAt) <= 600
+				and typeof(teleportData.userIds) == "table" then
+				if expectedMatchId == nil then expectedMatchId = teleportData.matchId end
+				if teleportData.matchId == expectedMatchId then
+					if teleportData.userIds[1] == player.UserId then side = "A" end
+					if teleportData.userIds[2] == player.UserId then side = "B" end
 				end
-				task.wait(2)
-				if #waitingPlayers > 0 then
-					pcall(function() TeleportService:TeleportAsync(game.PlaceId, waitingPlayers) end)
-				end
-			end)
+			end
+			if not side then
+				player:Kick("Invalid or expired PvP match ticket.")
+				PlayerData.unload(player)
+				return
+			end
+			assignPlayer(player, side)
+			playerReady[player] = true
+			player:LoadCharacter()
+			tryStartPvP()
+			if not joinTimeoutScheduled and currentMatch and currentMatch.status == "Waiting" then
+				joinTimeoutScheduled = true
+				local waitingMatch = currentMatch
+				task.delay(MATCH_JOIN_TIMEOUT, function()
+					if currentMatch ~= waitingMatch or waitingMatch.status ~= "Waiting" then return end
+					local waitingPlayers = Players:GetPlayers()
+					for _, waitingPlayer in waitingPlayers do
+						Remotes.MatchEvent:FireClient(waitingPlayer, "OpponentJoinFailed", {})
+					end
+					task.wait(2)
+					if #waitingPlayers > 0 then
+						pcall(function() TeleportService:TeleportAsync(game.PlaceId, waitingPlayers) end)
+					end
+				end)
+			end
 		end
 	end)
 end
@@ -462,7 +585,37 @@ Remotes.StartPveLevel.OnServerEvent:Connect(function(player, mode, level)
 	local profile = PlayerData.get(player)
 	local prog = profile.pveProgress[mode] or 0
 	if level < 1 or level > prog + 1 then return end
-	startPvELevel(player, mode, level)
+	
+	if isStudio then
+		startPvELevel(player, mode, level)
+	elseif isLobby then
+		local reserved, accessCode = pcall(function()
+			return TeleportService:ReserveServerAsync(game.PlaceId)
+		end)
+		if not reserved or typeof(accessCode) ~= "string" then
+			Remotes.MatchEvent:FireClient(player, "QueueError", { message = "Failed to reserve a PvE server." })
+			return
+		end
+		
+		local data = {
+			mode = "pve_match",
+			pveMode = mode,
+			pveLevel = level,
+			userId = player.UserId,
+			createdAt = os.time(),
+		}
+		
+		local options = Instance.new("TeleportOptions")
+		options.ReservedServerAccessCode = accessCode
+		options:SetTeleportData(data)
+		
+		local ok, err = pcall(function()
+			TeleportService:TeleportAsync(game.PlaceId, { player }, options)
+		end)
+		if not ok then
+			Remotes.MatchEvent:FireClient(player, "QueueError", { message = "Failed to teleport to PvE server." })
+		end
+	end
 end)
 
 Remotes.BuyPveUpgrade.OnServerEvent:Connect(function(player, trackOrPerkId)
@@ -506,18 +659,31 @@ Remotes.ResultAction.OnServerEvent:Connect(function(player, action)
 	if action == "menu" then
 		playerReady[player] = false
 		rematchVotes[player] = nil
-		if matchMode == "PvE" then
-			Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {})
-			clearMatchState()
-		elseif isStudio then
-			for _, participant in Players:GetPlayers() do
-				Remotes.MatchEvent:FireClient(participant, "ReturnToMenu", {})
+		if isStudio then
+			if matchMode == "PvE" then
+				player.CameraMode = Enum.CameraMode.Classic
+				Remotes.MatchEvent:FireClient(player, "ReturnToMenu", {})
+				clearMatchState()
+			else
+				for _, participant in Players:GetPlayers() do
+					participant.CameraMode = Enum.CameraMode.Classic
+					Remotes.MatchEvent:FireClient(participant, "ReturnToMenu", {})
+				end
+				clearMatchState()
 			end
-			clearMatchState()
 		else
 			local participants = Players:GetPlayers()
 			teleportToLobby(participants)
 		end
+		return
+	end
+
+	if matchMode == "PvE" and match.botMatch then
+		if action ~= "replay" then return end
+		local botName = match.botName or "Opponent"
+		local botRating = match.botRating or 1000
+		clearMatchState()
+		startBotMatch(player, botName, botRating)
 		return
 	end
 
@@ -545,7 +711,7 @@ Remotes.ResultAction.OnServerEvent:Connect(function(player, action)
 	StatusEffectSystem.clearAll(match)
 	resetMap()
 	rematchVotes = {}
-	currentMatch = Match.new(map, match.difficulty)
+	currentMatch = Match.new(map :: MapBuilder.MapHandle, match.difficulty)
 	currentMatch.mode = "PvP"
 	wireMatch(currentMatch)
 	startMatch()
@@ -592,9 +758,14 @@ task.spawn(function()
 				if side then
 					local snapshot = Match.buildSnapshot(match, side)
 					local opponent = sidePlayers[Match.enemyOf(side)]
-					snapshot.opponentName = opponent and opponent.DisplayName or "AI Commander"
+					snapshot.opponentName = opponent and opponent.DisplayName or match.botName or "AI Commander"
 					snapshot.matchId = expectedMatchId
-					snapshot.mode = matchMode
+					snapshot.mode = if match.botMatch then "PvP" else matchMode
+					if match.botMatch then
+						-- The synthetic scaling level must never reach the client.
+						snapshot.pveLevel = nil
+						snapshot.pveMode = nil
+					end
 					Remotes.StateUpdate:FireClient(player, snapshot)
 				end
 			end
@@ -604,8 +775,10 @@ end)
 
 -- Server type branches
 if isLobby or isStudio then
+	LobbyBuilder.build()
+	LobbyFlex.buildLeaderboardWall()
+	LobbyBots.start()
 	if not isStudio then
-		LobbyBuilder.build()
 		MatchmakingService.start()
 	end
 
@@ -623,7 +796,7 @@ if isLobby or isStudio then
 				end
 				if not currentMatch then
 					matchMode = "PvP"
-					currentMatch = Match.new(map, DifficultyConfig.DEFAULT)
+					currentMatch = Match.new(map :: MapBuilder.MapHandle, DifficultyConfig.DEFAULT)
 					currentMatch.mode = matchMode
 					wireMatch(currentMatch)
 				end
@@ -644,12 +817,26 @@ if isLobby or isStudio then
 		end
 	end)
 
-	Players.PlayerAdded:Connect(function(player)
+	local lobbyPlayersSetUp: { [Player]: boolean } = {}
+	local function setUpLobbyPlayer(player: Player)
+		if lobbyPlayersSetUp[player] then return end
+		lobbyPlayersSetUp[player] = true
 		loadPlayerProfile(player)
-		-- Lobby players wait in menu; character loads when a mode is selected.
-	end)
+		LobbyFlex.bindPlayer(player)
+		player.CameraMode = Enum.CameraMode.Classic
+		player:LoadCharacter()
+	end
+
+	Players.PlayerAdded:Connect(setUpLobbyPlayer)
+	-- Players who joined while the lobby was still building (always the case in
+	-- Studio) missed the PlayerAdded signal and would keep the StarterPlayer
+	-- LockFirstPerson camera, freezing the mouse cursor in the lobby.
+	for _, player in Players:GetPlayers() do
+		setUpLobbyPlayer(player)
+	end
 
 	Players.PlayerRemoving:Connect(function(player)
+		lobbyPlayersSetUp[player] = nil
 		local side = sideFor(player)
 		if side and currentMatch and currentMatch.status == "Active" then
 			currentMatch.status = "Ended"
@@ -663,8 +850,8 @@ if isLobby or isStudio then
 		PlayerData.unload(player)
 	end)
 else
-	-- Reserved PvP server
-	initPvPReservedServer()
+	-- Reserved Server (PvP or PvE)
+	initReservedServer()
 
 	Players.PlayerRemoving:Connect(function(player)
 		local side = sideFor(player)

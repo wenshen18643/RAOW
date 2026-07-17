@@ -10,6 +10,10 @@ local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Telemetry = require(script.Parent.Telemetry)
+local PlayerData = require(script.Parent.PlayerData)
+local BotIdentity = require(script.Parent.BotIdentity)
+
+local BOT_FALLBACK_SECONDS = 90
 
 local MatchmakingService = {}
 -- MemoryStore handles are created lazily: GetQueue/GetHashMap throw in
@@ -35,6 +39,7 @@ local function ensureStores(): boolean
 end
 
 local tickets: { [Player]: string } = {}
+local queuedAt: { [Player]: number } = {}
 local pending: { [Player]: { code: string, data: any, attempts: number } } = {}
 local started = false
 
@@ -49,6 +54,7 @@ end
 
 local function clearLocal(player: Player)
 	tickets[player] = nil
+	queuedAt[player] = nil
 	pending[player] = nil
 	pcall(function() presence:RemoveAsync(playerKey(player.UserId)) end)
 end
@@ -74,6 +80,7 @@ enqueue = function(player: Player)
 		return
 	end
 	tickets[player] = ticket
+	if not queuedAt[player] then queuedAt[player] = os.clock() end
 	Telemetry.event(player, "queue_joined")
 	queueStatus(player)
 end
@@ -84,6 +91,45 @@ local function restore(player: Player, reason: string)
 	if player.Parent == Players then
 		Remotes.MatchEvent:FireClient(player, "QueueError", { message = reason })
 		task.delay(2, function() enqueue(player) end)
+	end
+end
+
+-- No human pair after the fallback window: hand the player a rated bot match.
+-- Same MATCH FOUND flow and reserved-server teleport as a real pairing.
+local function startBotFallback(player: Player)
+	local ticket = tickets[player]
+	if not ticket then return end
+	tickets[player] = nil
+	queuedAt[player] = nil
+	pcall(function() presence:RemoveAsync(playerKey(player.UserId)) end)
+
+	local reserved, accessCode = pcall(function()
+		return TeleportService:ReserveServerAsync(game.PlaceId)
+	end)
+	if not reserved or typeof(accessCode) ~= "string" then
+		Telemetry.count("bot_match_reservation_failed")
+		restore(player, "MATCHMAKING SERVICE BUSY • RETRYING")
+		return
+	end
+	local rating = PlayerData.get(player).rating
+	local data = {
+		mode = "pvp_bot_match",
+		userId = player.UserId,
+		botName = BotIdentity.pickName(),
+		botRating = BotIdentity.ratingNear(rating),
+		createdAt = os.time(),
+	}
+	pending[player] = { code = accessCode, data = data, attempts = 0 }
+	Remotes.MatchEvent:FireClient(player, "MatchFound", {})
+	Telemetry.event(player, "bot_match_started")
+	local options = Instance.new("TeleportOptions")
+	options.ReservedServerAccessCode = accessCode
+	options:SetTeleportData(data)
+	local ok, err = pcall(function() TeleportService:TeleportAsync(game.PlaceId, { player }, options) end)
+	if not ok then
+		Telemetry.event(player, "match_teleport_failed")
+		restore(player, "MATCH TELEPORT FAILED • RETURNED TO QUEUE")
+		warn("[Matchmaking] Bot fallback teleport failed:", err)
 	end
 end
 
@@ -191,7 +237,11 @@ function MatchmakingService.start()
 			for player, ticket in tickets do
 				if player.Parent == Players then
 					local ok, assignment = pcall(function() return assignments:GetAsync(playerKey(player.UserId)) end)
-					if ok and typeof(assignment) == "table" and assignment.ticket == ticket then teleportAssigned(player, assignment) end
+					if ok and typeof(assignment) == "table" and assignment.ticket == ticket then
+						teleportAssigned(player, assignment)
+					elseif tickets[player] and os.clock() - (queuedAt[player] or os.clock()) >= BOT_FALLBACK_SECONDS then
+						startBotFallback(player)
+					end
 				end
 			end
 			task.wait(2)

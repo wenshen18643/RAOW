@@ -84,6 +84,10 @@ export type Match = {
 	pveLevel: number?, -- Set for PvE mode
 	pveMode: string?, -- "Normal" | "Hard" | "Impossible"
 	mode: "PvE" | "PvP",
+	-- Bot fallback matches run on the PvE sim but present as PvP to the client.
+	botMatch: boolean?,
+	botName: string?,
+	botRating: number?,
 	projectiles: { ProjectileRecord },
 	-- callbacks wired by init
 	onAgeUp: (side: string, newAge: number) -> ()?,

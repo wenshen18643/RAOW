@@ -867,6 +867,10 @@ function GameUI.setHudVisible(visible: boolean)
 	gui.Enabled = visible
 end
 
+function GameUI.setQueueMode(enabled: boolean)
+	setQueueMode(enabled)
+end
+
 -- Expose HUD elements so the tutorial can point at them.
 function GameUI.getSlotButton(i: number): TextButton?
 	local slot = slots[i]
