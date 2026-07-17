@@ -115,7 +115,8 @@ function LobbyBuilder.build()
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "LobbySpawn"
 	spawn.Size = Vector3.new(14, 1, 14)
-	spawn.CFrame = CFrame.new(ORIGIN + Vector3.new(0, 1.5, 30))
+	-- Keep the spawn footprint and portal-detection radius clear of the PvP pad.
+	spawn.CFrame = CFrame.new(ORIGIN + Vector3.new(0, 1.5, 20))
 	spawn.Color = Color3.fromRGB(70, 150, 220)
 	spawn.Material = Enum.Material.Neon
 	spawn.Transparency = 0.25

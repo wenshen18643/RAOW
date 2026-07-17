@@ -88,13 +88,14 @@ end
 local function restore(player: Player, reason: string)
 	pending[player] = nil
 	tickets[player] = nil
+	queuedAt[player] = nil
 	if player.Parent == Players then
 		Remotes.MatchEvent:FireClient(player, "QueueError", { message = reason })
 		task.delay(2, function() enqueue(player) end)
 	end
 end
 
--- No human pair after the fallback window: hand the player a rated bot match.
+-- No human pair after the fallback window: hand the player an unranked bot match.
 -- Same MATCH FOUND flow and reserved-server teleport as a real pairing.
 local function startBotFallback(player: Player)
 	local ticket = tickets[player]

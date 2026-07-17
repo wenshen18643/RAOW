@@ -23,6 +23,7 @@ local AVATAR_ID_MAX = 900_000_000
 type Bot = { model: Model, leaving: boolean }
 local bots: { Bot } = {}
 local started = false
+local pendingSpawns = 0
 
 -- Default Roblox locomotion assets. The rig ships with the standard Animate
 -- LocalScript, which never runs for a server-owned NPC — without this driver
@@ -151,36 +152,54 @@ local function driveBot(bot: Bot)
 end
 
 local function spawnBot()
+	pendingSpawns += 1
 	task.spawn(function()
-		local model = buildBotModel()
-		if not model then return end
-		local humanoid = model:FindFirstChildOfClass("Humanoid")
-		local name = BotIdentity.pickName()
-		model.Name = name
-		if humanoid then
-			humanoid.DisplayName = name
-		end
+		local spawnedModel: Model? = nil
+		local spawnedBot: Bot? = nil
+		local ok, err = pcall(function()
+			local model = buildBotModel()
+			if not model then return end
+			spawnedModel = model
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			local name = BotIdentity.pickName()
+			model.Name = name
+			if humanoid then
+				humanoid.DisplayName = name
+			end
 
-		local bot: Bot = { model = model, leaving = false }
-		if humanoid then
-			humanoid.Died:Connect(function()
-				task.wait(2)
-				removeBot(bot)
-			end)
-		end
-		model:PivotTo(CFrame.new(randomWanderTarget() + Vector3.new(0, 3, 0)))
-		model.Parent = workspace
-		for _, part in model:GetDescendants() do
-			if part:IsA("BasePart") then part:SetNetworkOwner(nil) end
-		end
-		if humanoid then animateBot(humanoid) end
+			local bot: Bot = { model = model, leaving = false }
+			if humanoid then
+				humanoid.Died:Connect(function()
+					task.wait(2)
+					removeBot(bot)
+				end)
+			end
+			model:PivotTo(CFrame.new(randomWanderTarget() + Vector3.new(0, 3, 0)))
+			model.Parent = workspace
+			for _, part in model:GetDescendants() do
+				if part:IsA("BasePart") then part:SetNetworkOwner(nil) end
+			end
 
-		local rating = BotIdentity.ambientRating()
-		local flexText, flexColor = syntheticFlex(rating)
-		LobbyFlex.attachBillboard(model, `ELO {rating}`, flexText, flexColor)
+			-- Count the bot before animation/avatar finishing work so the
+			-- maintenance loop cannot start duplicate replacements.
+			table.insert(bots, bot)
+			spawnedBot = bot
+			if humanoid then animateBot(humanoid) end
 
-		table.insert(bots, bot)
-		driveBot(bot)
+			local rating = BotIdentity.ambientRating()
+			local flexText, flexColor = syntheticFlex(rating)
+			LobbyFlex.attachBillboard(model, `ELO {rating}`, flexText, flexColor)
+			driveBot(bot)
+		end)
+		pendingSpawns = math.max(0, pendingSpawns - 1)
+		if not ok then
+			if spawnedBot then
+				removeBot(spawnedBot)
+			elseif spawnedModel and spawnedModel.Parent then
+				spawnedModel:Destroy()
+			end
+			warn("[LobbyBots] Failed to spawn ambient bot:", err)
+		end
 	end)
 end
 
@@ -194,7 +213,7 @@ function LobbyBots.start()
 			for _, bot in bots do
 				if not bot.leaving then active += 1 end
 			end
-			if active < target then
+			if active + pendingSpawns < target then
 				spawnBot() -- one per tick keeps arrivals staggered
 			elseif active > target then
 				for _, bot in bots do

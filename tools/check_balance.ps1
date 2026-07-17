@@ -93,8 +93,10 @@ if ((($super.Damage / $super.AttackSpeed) / $super.Cost) -gt 1.05 * (($ageFiveHe
 $upgradeCaps = Select-String -Path $pvePath -Pattern 'maxTier = (?<cap>\d+)' | ForEach-Object { [int]$_.Matches[0].Groups['cap'].Value }
 if ($upgradeCaps.Count -ne 3) { throw "Expected finite caps on all three PvE upgrade tracks." }
 if (($upgradeCaps | Measure-Object -Maximum).Maximum -gt 10) { throw "A PvE upgrade cap exceeds the 10-tier balance ceiling." }
-$campaignCap = Select-String -Path $pvePath -Pattern 'MAX_LEVEL = (?<level>\d+)' | Select-Object -First 1
-if ([int]$campaignCap.Matches[0].Groups['level'].Value -ne 25) { throw "PvE campaign must have a clear 25-stage endpoint." }
+$campaignCap = Select-String -Path $pvePath -Pattern 'MAX_LEVEL\s*=' | Select-Object -First 1
+if ($campaignCap) { throw "PvE campaign must remain endless rather than reintroducing a hard level cap." }
+$endlessScaling = Select-String -Path $pvePath -Pattern 'function PvELevels\.difficultyForLevel' | Select-Object -First 1
+if (-not $endlessScaling) { throw "Endless PvE difficulty scaling is missing." }
 
 $bossRows = Select-String -Path $pvePath -Pattern '\{ unitId = "(?<id>age(?<age>\d+)_[^"]+)", hpScale = (?<hp>[0-9.]+), damageScale = (?<damage>[0-9.]+) \}' | ForEach-Object {
     $m = $_.Matches[0].Groups

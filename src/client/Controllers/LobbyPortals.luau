@@ -122,13 +122,18 @@ local function openConfirmPanel(pad: BasePart)
 	panelFrame.Name = "ConfirmPanel"
 	panelFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 	panelFrame.Position = UDim2.fromScale(0.5, 0.5)
-	panelFrame.Size = UDim2.fromScale(0.46, 0.62)
+	panelFrame.Size = UDim2.fromScale(0.82, 0.72)
 	panelFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 	panelFrame.BorderSizePixel = 0
 	panelFrame.ZIndex = 100
 	panelFrame.Parent = gui
 	confirmPanel = panelFrame
 	corner(panelFrame, 14)
+
+	local panelSize = Instance.new("UISizeConstraint")
+	panelSize.MinSize = Vector2.new(260, 220)
+	panelSize.MaxSize = Vector2.new(700, 600)
+	panelSize.Parent = panelFrame
 	
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = portalColor
@@ -165,13 +170,13 @@ local function openConfirmPanel(pad: BasePart)
 		})
 		
 		-- Buttons
-		button(panelFrame, "QUEUE BATTLE", UDim2.fromScale(0.32, 0.8), UDim2.fromOffset(150, 40), Color3.fromRGB(50, 150, 80), function()
+		button(panelFrame, "QUEUE BATTLE", UDim2.fromScale(0.28, 0.8), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(50, 150, 80), function()
 			Remotes.SelectMode:FireServer("pvp")
 			cancelledPad = pad
 			closeConfirmPanel()
 		end)
 		
-		button(panelFrame, "CANCEL", UDim2.fromScale(0.68, 0.8), UDim2.fromOffset(150, 40), Color3.fromRGB(120, 60, 60), function()
+		button(panelFrame, "CANCEL", UDim2.fromScale(0.72, 0.8), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(120, 60, 60), function()
 			cancelledPad = pad
 			closeConfirmPanel()
 		end)
@@ -205,7 +210,7 @@ local function openConfirmPanel(pad: BasePart)
 		scroll.Parent = panelFrame
 		
 		local grid = Instance.new("UIGridLayout")
-		grid.CellSize = UDim2.fromOffset(72, 72)
+		grid.CellSize = UDim2.new(0.25, -6, 0, 72)
 		grid.CellPadding = UDim2.fromOffset(8, 8)
 		grid.SortOrder = Enum.SortOrder.LayoutOrder
 		grid.Parent = scroll
@@ -280,9 +285,6 @@ local function openConfirmPanel(pad: BasePart)
 					selectedLevel = lvl
 					updateGoText()
 					refreshGridHighlights()
-					Remotes.StartPveLevel:FireServer(pveMode, lvl)
-					cancelledPad = pad
-					closeConfirmPanel()
 				end
 			end)
 		end
@@ -290,13 +292,13 @@ local function openConfirmPanel(pad: BasePart)
 		scroll.CanvasSize = UDim2.new(0, 0, 0, math.ceil(totalLevelsToShow / 4) * 80)
 		
 		-- Buttons
-		goBtn = button(panelFrame, `GO — LEVEL {selectedLevel}`, UDim2.fromScale(0.32, 0.82), UDim2.fromOffset(160, 42), Color3.fromRGB(50, 150, 80), function()
+		goBtn = button(panelFrame, `GO — LEVEL {selectedLevel}`, UDim2.fromScale(0.28, 0.82), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(50, 150, 80), function()
 			Remotes.StartPveLevel:FireServer(pveMode, selectedLevel)
 			cancelledPad = pad
 			closeConfirmPanel()
 		end)
 		
-		button(panelFrame, "CANCEL", UDim2.fromScale(0.68, 0.82), UDim2.fromOffset(160, 42), Color3.fromRGB(120, 60, 60), function()
+		button(panelFrame, "CANCEL", UDim2.fromScale(0.72, 0.82), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(120, 60, 60), function()
 			cancelledPad = pad
 			closeConfirmPanel()
 		end)

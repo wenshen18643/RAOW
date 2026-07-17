@@ -174,7 +174,7 @@ local function wireMatch(match: Match.Match)
 			local player = sidePlayers["A"]
 			if player then
 				local won = winner == "A"
-				local delta = PlayerData.recordBotMatch(player, match.botRating or 1000, won)
+				PlayerData.recordBotMatch(player, match.botRating or 1000, won)
 				local xpResult = PlayerData.addXp(player, won and ProgressionConfig.XP_WIN or ProgressionConfig.XP_LOSS)
 				PlayerData.addCoins(player, won and PvELevels.PVP_WIN_COINS or PvELevels.PVP_LOSS_COINS)
 				local dailyWarBonds = PlayerData.recordDailyBattle(player, won)
@@ -184,7 +184,6 @@ local function wireMatch(match: Match.Match)
 				Telemetry.event(player, won and "pvp_bot_match_won" or "pvp_bot_match_lost", os.clock() - match.startedAt)
 				Remotes.MatchEvent:FireClient(player, won and "Victory" or "Defeat", {
 					decisionIn = RESULT_TIMEOUT,
-					ratingDelta = delta,
 					xpData = xpResult,
 					coins = won and PvELevels.PVP_WIN_COINS or PvELevels.PVP_LOSS_COINS,
 					dailyWarBonds = dailyWarBonds,

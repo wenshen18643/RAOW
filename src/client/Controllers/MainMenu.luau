@@ -1167,13 +1167,18 @@ function MainMenu.start()
 		lobbyHud = Instance.new("Frame")
 		lobbyHud.Name = "LobbyHUD"
 		lobbyHud.Position = UDim2.new(0, 15, 0, 15)
-		lobbyHud.Size = UDim2.new(0, 380, 0, 48)
+		lobbyHud.Size = UDim2.new(0.9, 0, 0, 48)
 		lobbyHud.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 		lobbyHud.BackgroundTransparency = 0.25
 		lobbyHud.BorderSizePixel = 0
 		lobbyHud.ZIndex = 5
 		lobbyHud.Parent = gui
 		corner(lobbyHud, 8)
+
+		local lobbyHudSize = Instance.new("UISizeConstraint")
+		lobbyHudSize.MinSize = Vector2.new(280, 48)
+		lobbyHudSize.MaxSize = Vector2.new(380, 48)
+		lobbyHudSize.Parent = lobbyHud
 
 		local lobbyStroke = Instance.new("UIStroke")
 		lobbyStroke.Color = GOLD
@@ -1189,20 +1194,20 @@ function MainMenu.start()
 		layout.Parent = lobbyHud
 
 		-- SHOP button (opens storefront)
-		button(lobbyHud, "SHOP", UDim2.new(0, 0, 0.5, 0), UDim2.new(0, 110, 0, 32), Color3.fromRGB(110, 70, 160), function()
+		button(lobbyHud, "SHOP", UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(110, 70, 160), function()
 			closePanels()
 			openStorefront()
 		end)
 
 		-- UPGRADES button
-		button(lobbyHud, "UPGRADES", UDim2.new(0, 0, 0.5, 0), UDim2.new(0, 110, 0, 32), Color3.fromRGB(150, 110, 30), function()
+		button(lobbyHud, "UPGRADES", UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(150, 110, 30), function()
 			closePanels()
 			refreshUpgradesUI()
 			pveUpgradesPanel.Visible = true
 		end)
 
 		-- SETTINGS button
-		button(lobbyHud, "SETTINGS", UDim2.new(0, 0, 0.5, 0), UDim2.new(0, 110, 0, 32), Color3.fromRGB(55, 65, 90), function()
+		button(lobbyHud, "SETTINGS", UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(55, 65, 90), function()
 			closePanels()
 			settingsPanel.Visible = true
 		end)
