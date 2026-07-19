@@ -592,6 +592,47 @@ for i = 1, 6 do
 	makeSlot(tostring(i))
 end
 
+local function applyTouchLayout()
+	if not UserInputService.TouchEnabled then return end
+
+	-- Keep Roblox's movement and jump zones clear: command cards occupy a
+	-- compact two-row block in the lower centre, while attacks sit above jump.
+	layout.Parent = nil
+	hotbar.AnchorPoint = Vector2.new(0.5, 0.5)
+	hotbar.Position = UDim2.fromScale(0.51, 0.84)
+	hotbar.Size = UDim2.fromScale(0.48, 0.19)
+	for index, slot in slots do
+		local column = (index - 1) % 3
+		local row = math.floor((index - 1) / 3)
+		slot.btn.AnchorPoint = Vector2.new(0.5, 0.5)
+		slot.btn.Position = UDim2.fromScale(0.17 + column * 0.33, 0.24 + row * 0.52)
+		slot.btn.Size = UDim2.fromScale(0.31, 0.46)
+		slot.key.Visible = false
+		slot.name.Position = UDim2.fromScale(0, 0.08)
+		slot.name.Size = UDim2.fromScale(1, 0.5)
+		slot.cost.Position = UDim2.fromScale(0, 0.58)
+		slot.cost.Size = UDim2.fromScale(1, 0.34)
+	end
+
+	goldFrame.Position = UDim2.fromScale(0.51, 0.73)
+	goldFrame.Size = UDim2.fromScale(0.34, 0.065)
+	countLabel.Position = UDim2.fromScale(0.51, 0.95)
+	countLabel.Size = UDim2.fromScale(0.48, 0.025)
+	upgradesToggle.Position = UDim2.fromScale(0.02, 0.78)
+	upgradesToggle.Size = UDim2.fromScale(0.18, 0.055)
+	upgradesPanel.Position = UDim2.fromScale(0.02, 0.72)
+	upgradesPanel.Size = UDim2.fromScale(0.26, 0.28)
+
+	guideButton.Size = UDim2.fromScale(0.2, 0.05)
+	turretButton.Position = UDim2.fromScale(0.02, 0.155)
+	turretButton.Size = UDim2.fromScale(0.2, 0.05)
+	guidePanel.Size = UDim2.fromScale(0.9, 0.72)
+	turretPanel.Size = UDim2.fromScale(0.9, 0.72)
+	objectiveFrame.Size = UDim2.fromScale(0.7, 0.08)
+	diffLabel.Visible = false
+end
+applyTouchLayout()
+
 local function rejectAction(reason: string)
 	Audio.play("hover")
 	showMessage(reason, Color3.fromRGB(255, 150, 120), 1.5)

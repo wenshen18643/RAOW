@@ -107,12 +107,13 @@ function Weapon.start()
 
 	if UserInputService.TouchEnabled then
 		local hud = player:WaitForChild("PlayerGui"):WaitForChild("GameHUD")
+		local touchButtons: { { button: TextButton, position: UDim2 } } = {}
 		local function touchAttack(name: string, caption: string, position: UDim2, secondary: boolean)
 			local button = Instance.new("TextButton")
 			button.Name = name
 			button.AnchorPoint = Vector2.new(0.5, 0.5)
 			button.Position = position
-			button.Size = UDim2.fromOffset(88, 88)
+			button.Size = UDim2.fromOffset(68, 68)
 			button.BackgroundColor3 = secondary and Color3.fromRGB(95, 60, 120) or Color3.fromRGB(135, 65, 55)
 			button.BackgroundTransparency = 0.2
 			button.Text = caption
@@ -121,6 +122,7 @@ function Weapon.start()
 			button.Font = Enum.Font.GothamBold
 			button.ZIndex = 12
 			button.Parent = hud
+			table.insert(touchButtons, { button = button, position = position })
 			local corner = Instance.new("UICorner")
 			corner.CornerRadius = UDim.new(1, 0)
 			corner.Parent = button
@@ -133,8 +135,23 @@ function Weapon.start()
 				if secondary then firingSecondary = false else firing = false end
 			end)
 		end
-		touchAttack("TouchPrimary", "ATTACK", UDim2.fromScale(0.87, 0.69), false)
-		touchAttack("TouchSecondary", "HEAVY", UDim2.fromScale(0.73, 0.76), true)
+		touchAttack("TouchPrimary", "ATTACK", UDim2.fromScale(0.87, 0.48), false)
+		touchAttack("TouchSecondary", "HEAVY", UDim2.fromScale(0.73, 0.58), true)
+
+		local function layoutTouchAttacks()
+			local camera = workspace.CurrentCamera
+			if not camera then return end
+			local viewport = camera.ViewportSize
+			local diameter = math.clamp(math.min(viewport.X, viewport.Y) * 0.16, 56, 78)
+			for _, entry in touchButtons do
+				entry.button.Size = UDim2.fromOffset(diameter, diameter)
+				entry.button.Position = entry.position
+			end
+		end
+		local camera = workspace.CurrentCamera
+		if camera then camera:GetPropertyChangedSignal("ViewportSize"):Connect(layoutTouchAttacks) end
+		workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(layoutTouchAttacks)
+		layoutTouchAttacks()
 	end
 	RunService.Heartbeat:Connect(function()
 		if firing then
