@@ -19,6 +19,7 @@ local Audio = require(script.Parent.Audio)
 local Accessibility = require(script.Parent.Accessibility)
 local Settings = require(script.Parent.Settings)
 local UISelection = require(script.Parent.UISelection)
+local InputPrompts = require(script.Parent.InputPrompts)
 
 local GameUI = {}
 local lastState: { [string]: any } = {}
@@ -523,7 +524,7 @@ local function makeUpgBtn(stat: string, text: string)
 	c.Parent = b
 	local t = label(b, { Size = UDim2.fromScale(1, 0.5), Position = UDim2.fromScale(0, 0.1), Text = text })
 	local costL = label(b, { Size = UDim2.fromScale(1, 0.4), Position = UDim2.fromScale(0, 0.6), Text = "500 g", TextColor3 = Color3.fromRGB(255, 220, 80) })
-	upgButtons[stat] = { btn = b, cost = costL }
+	upgButtons[stat] = { btn = b, title = t, cost = costL, text = text }
 	b.Activated:Connect(function()
 		if settingsOpen() then return end
 		Audio.play("click")
@@ -531,9 +532,9 @@ local function makeUpgBtn(stat: string, text: string)
 	end)
 end
 
-makeUpgBtn("dmg", "[1] DAMAGE +15%")
-makeUpgBtn("health", "[2] HEALTH +15%")
-makeUpgBtn("def", "[3] DEFENSE +10%")
+makeUpgBtn("dmg", "DAMAGE +15%")
+makeUpgBtn("health", "HEALTH +15%")
+makeUpgBtn("def", "DEFENSE +10%")
 UISelection.bind(upgradesPanel, upgButtons.dmg.btn, function()
 	upgradesPanel.Visible = false
 end)
@@ -623,6 +624,31 @@ for i = 1, 6 do
 	makeSlot(tostring(i))
 end
 
+local function refreshInputPrompts()
+	upgradesToggle.Text = InputPrompts.withPrompt("UPGRADES", "upgrades")
+	guideButton.Text = InputPrompts.withPrompt("COMBO GUIDE", "guide")
+	turretButton.Text = InputPrompts.withPrompt("TURRETS", "turrets")
+
+	for index, slot in slots do
+		local prompt = InputPrompts.get(`slot{index}`)
+		slot.key.Text = prompt
+		slot.key.Visible = prompt ~= ""
+	end
+
+	local upgradeActions = { dmg = "slot1", health = "slot2", def = "slot3" }
+	for stat, ui in upgButtons do
+		ui.title.Text = InputPrompts.withPrompt(ui.text, upgradeActions[stat])
+	end
+
+	local age = lastState.age
+	if age and lastState.nextAgeXp ~= nil then
+		local text = if lastState.canEvolve then `EVOLVE TO AGE {age + 1}` else `AGE {age + 1} LOCKED`
+		evolveBtn.Text = InputPrompts.withPrompt(text, "evolve")
+	else
+		evolveBtn.Text = InputPrompts.withPrompt("EVOLVE", "evolve")
+	end
+end
+
 local function applyTouchLayout()
 	if not UserInputService.TouchEnabled then return end
 
@@ -663,6 +689,8 @@ local function applyTouchLayout()
 	diffLabel.Visible = false
 end
 applyTouchLayout()
+refreshInputPrompts()
+InputPrompts.onChanged(refreshInputPrompts)
 
 local function rejectAction(reason: string)
 	Audio.play("hover")
@@ -700,7 +728,7 @@ local function slotAction(i: number)
 				return
 			end
 		end
-		rejectAction("ALL SLOTS FULL • OPEN TURRETS [B] TO UPGRADE OR SELL")
+		rejectAction(InputPrompts.withPrompt("ALL SLOTS FULL • OPEN TURRETS TO UPGRADE OR SELL", "turrets"))
 	elseif i == 6 then
 		if (lastState.specialCd or 0) > 0 then
 			rejectAction(`SPECIAL READY IN {math.ceil(lastState.specialCd)}s`)
@@ -886,7 +914,10 @@ local function refresh(state: { [string]: any })
 	end
 
 	evolveBtn.Visible = state.nextAgeXp ~= nil
-	evolveBtn.Text = state.canEvolve and `EVOLVE TO AGE {age + 1} [Q]` or `AGE {age + 1} LOCKED [Q]`
+	evolveBtn.Text = InputPrompts.withPrompt(
+		if state.canEvolve then `EVOLVE TO AGE {age + 1}` else `AGE {age + 1} LOCKED`,
+		"evolve"
+	)
 	evolveBtn.BackgroundColor3 = state.canEvolve and Color3.fromRGB(90, 180, 90) or Color3.fromRGB(65, 65, 72)
 
 	-- updates upgrades buttons

@@ -23,6 +23,7 @@ local Storefront = require(script.Parent.Storefront)
 local Settings = require(script.Parent.Settings)
 local UISelection = require(script.Parent.UISelection)
 local TutorialController = require(script.Parent.TutorialController)
+local InputPrompts = require(script.Parent.InputPrompts)
 
 local MainMenu = {}
 
@@ -992,7 +993,7 @@ function MainMenu.start()
 	matchControls.ZIndex = 30
 	matchControls.Parent = gui
 	local matchSettingsButton = button(matchControls,
-		UserInputService.TouchEnabled and "SETTINGS" or "SETTINGS [P]",
+		InputPrompts.withPrompt("SETTINGS", "settings"),
 		UDim2.fromScale(0.245, 0.5), UDim2.fromScale(0.47, 1), Color3.fromRGB(55, 65, 90), function()
 			local shouldOpen = not settingsPanel.Visible and not accessibilityPanel.Visible
 			accessibilityPanel.Visible = false
@@ -1104,32 +1105,44 @@ function MainMenu.start()
 		Text = "HOW TO PLAY",
 		ZIndex = 11,
 	})
-	local controlsText = if UserInputService.TouchEnabled then "Touch — aim, attack, and tap hotbar cards"
-		elseif UserInputService.GamepadEnabled then "R2/L2 — attack/heavy  ·  D-pad/B — recruit/build  ·  L1 — turrets  ·  Y — evolve"
-		else "WASD — move  ·  Mouse — aim/attack  ·  Right Mouse — heavy attack"
-	local helpLines = {
-		"You are the HERO — fight in first person AND command your army.",
-		"",
-		controlsText,
-		"1 / 2 / 3 / 4 — recruit available units",
-		"5 — build turret  ·  B — manage turrets  ·  6 — special  ·  Q — evolve  ·  E/G — upgrades/guide",
-		"",
-		"There are 5 stages: Stone, Medieval, Renaissance, Modern, and Future.",
-		"Kills earn GOLD for troops and XP for evolution.",
-		"Evolving unlocks units, hero weapons, turrets, specials, and a tougher base.",
-		"YOUR GOAL: destroy the RED enemy base while protecting your BLUE base.",
-	}
-	label(helpPanel, {
+	local helpBody = label(helpPanel, {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.2, 0),
 		Size = UDim2.new(0.86, 0, 0.62, 0),
-		Text = table.concat(helpLines, "\n"),
+		Text = "",
 		TextScaled = false,
 		TextSize = 20,
 		TextWrapped = true,
 		TextColor3 = Color3.fromRGB(210, 210, 220),
 		ZIndex = 11,
 	})
+	local function refreshControlHelp()
+		local controlsText: string
+		if InputPrompts.getMode() == "Touch" then
+			controlsText = "Drag to aim • Use ATTACK and HEAVY buttons to fight\nTap unit cards to recruit • Tap turret, special, evolve, and panel buttons"
+		elseif InputPrompts.getMode() == "Gamepad" then
+			controlsText = `LEFT STICK — move • RIGHT STICK — aim • [RT] attack • [LT] heavy
+[{InputPrompts.get("slot1")}] / [{InputPrompts.get("slot2")}] / [{InputPrompts.get("slot3")}] / [{InputPrompts.get("slot4")}] — recruit units
+[{InputPrompts.get("slot5")}] build turret • [{InputPrompts.get("turrets")}] manage turrets • [{InputPrompts.get("slot6")}] special • [{InputPrompts.get("evolve")}] evolve`
+		else
+			controlsText = "WASD — move • Mouse — aim • [LMB] attack • [RMB] heavy\n[1] / [2] / [3] / [4] — recruit units\n[5] build turret • [B] manage turrets • [6] special • [Q] evolve • [E]/[G] upgrades/guide"
+		end
+		helpBody.Text = table.concat({
+			"You are the HERO — fight in first person AND command your army.",
+			"",
+			controlsText,
+			"",
+			"There are 5 stages: Stone, Medieval, Renaissance, Modern, and Future.",
+			"Kills earn GOLD for troops and XP for evolution.",
+			"Evolving unlocks units, hero weapons, turrets, specials, and a tougher base.",
+			"YOUR GOAL: destroy the RED enemy base while protecting your BLUE base.",
+		}, "\n")
+	end
+	refreshControlHelp()
+	InputPrompts.onChanged(function()
+		matchSettingsButton.Text = InputPrompts.withPrompt("SETTINGS", "settings")
+		refreshControlHelp()
+	end)
 	button(helpPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
 		helpPanel.Visible = false
 	end).ZIndex = 11

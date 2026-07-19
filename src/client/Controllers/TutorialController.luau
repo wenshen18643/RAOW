@@ -3,10 +3,10 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local GameUI = require(script.Parent.GameUI)
+local InputPrompts = require(script.Parent.InputPrompts)
 
 local TutorialController = {}
 
@@ -201,9 +201,7 @@ local function setStep(step: number)
 
 	if not hintLabel then return end
 	if step == 1 then
-		hintLabel.Text = if UserInputService.TouchEnabled then "Tap the first unit card to recruit a Club Man"
-			elseif UserInputService.GamepadEnabled then "Press D-pad Up to recruit a Club Man"
-			else "Press 1 to recruit a Club Man"
+		hintLabel.Text = InputPrompts.instruction("slot1", "recruit a Club Man", "Tap the first unit card to recruit a Club Man")
 		pointAt(GameUI.getSlotButton(1))
 	elseif step == 2 then
 		hintLabel.Text = "Damage the enemy base or defeat an enemy to earn XP"
@@ -295,6 +293,12 @@ end
 hideTutorialRef = hideTutorial
 
 function TutorialController.start()
+	InputPrompts.onChanged(function()
+		if isActive then
+			setStep(currentStep)
+		end
+	end)
+
 	Remotes.ProfileSync.OnClientEvent:Connect(function(profile)
 		if typeof(profile) == "table" then
 			tutorialDone = profile.tutorialDone == true
