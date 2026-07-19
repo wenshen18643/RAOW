@@ -22,6 +22,7 @@ local TurretSystem = require(Services.TurretSystem)
 local SpecialSystem = require(Services.SpecialSystem)
 local HeroSystem = require(Services.HeroSystem)
 local AIBrain = require(Services.AIBrain)
+local CampaignRules = require(Services.CampaignRules)
 local StatusEffectSystem = require(Services.StatusEffectSystem)
 local PlayerData = require(Services.PlayerData)
 local Telemetry = require(Services.Telemetry)
@@ -115,6 +116,7 @@ local joinTimeoutScheduled = false
 local function resetMap()
 	local m = map
 	if not m then return end
+	MapBuilder.applyVariant(m, "Frontier")
 	for _, base in m.bases do
 		MapBuilder.evolveBase(m, base.side, 1, Ages[1].color)
 		base.core:SetAttribute("Hp", GameConfig.BASE_MAX_HP)
@@ -357,7 +359,15 @@ local function startMatch()
 	if not match or match.status ~= "Waiting" then return end
 	Match.start(match)
 	local displayMode = if match.botMatch then "PvP" else matchMode
-	Remotes.MatchEvent:FireAllClients("MatchStart", { difficulty = match.difficulty, mode = displayMode })
+	Remotes.MatchEvent:FireAllClients("MatchStart", {
+		difficulty = match.difficulty,
+		mode = displayMode,
+		stageName = match.campaignStage and match.campaignStage.name or nil,
+		stageObjective = match.campaignStage and match.campaignStage.objective.label or nil,
+		stageObjectiveDescription = match.campaignStage and match.campaignStage.objective.description or nil,
+		stageModifier = match.campaignStage and match.campaignStage.modifierLabel or nil,
+		stageModifierDescription = match.campaignStage and match.campaignStage.modifierDescription or nil,
+	})
 	for _, player in Players:GetPlayers() do
 		local side = sideFor(player)
 		if side then
@@ -379,6 +389,7 @@ local function startPvELevel(player: Player, mode: string, level: number)
 	currentMatch.pveLevel = level
 	currentMatch.pveMode = mode
 	currentMatch.mode = matchMode
+	CampaignRules.configure(currentMatch, level)
 	wireMatch(currentMatch)
 	assignPlayer(player, "A")
 	
@@ -783,6 +794,9 @@ RunService.Heartbeat:Connect(function(dt)
 	if simAccum >= step then
 		if matchMode == "PvE" and match.status == "Active" then
 			AIBrain.tick(match)
+			if not match.botMatch then
+				CampaignRules.tick(match)
+			end
 		end
 		UnitSim.tick(match, simAccum)
 		HeroSystem.tickMovement(match)

@@ -161,7 +161,7 @@ objectiveFrame.Parent = gui
 local objectiveCorner = Instance.new("UICorner")
 objectiveCorner.CornerRadius = UDim.new(0, 8)
 objectiveCorner.Parent = objectiveFrame
-label(objectiveFrame, {
+local objectiveTitle = label(objectiveFrame, {
 	Size = UDim2.fromScale(1, 0.46), Text = "GOAL: DESTROY THE ENEMY BASE",
 	TextColor3 = Color3.fromRGB(255, 125, 110), ZIndex = 3,
 })
@@ -834,7 +834,10 @@ local function refresh(state: { [string]: any })
 	local elapsed = math.max(0, state.matchElapsed or 0)
 	local mins = math.floor(elapsed / 60)
 	local secs = math.floor(elapsed % 60)
-	if state.pacePhase == "Sudden Death" then
+	if state.mode == "PvE" and state.objectiveRemaining ~= nil then
+		paceLabel.Text = `{mins}:{secs < 10 and "0" or ""}{secs} • HOLD FOR {math.ceil(state.objectiveRemaining)}s`
+		paceLabel.TextColor3 = Color3.fromRGB(125, 210, 255)
+	elseif state.pacePhase == "Sudden Death" then
 		paceLabel.Text = `{mins}:{secs < 10 and "0" or ""}{secs} • SUDDEN DEATH • 3x BASE DAMAGE`
 		paceLabel.TextColor3 = Color3.fromRGB(255, 105, 90)
 	elseif state.pacePhase == "Escalation" then
@@ -863,7 +866,11 @@ local function refresh(state: { [string]: any })
 
 	if state.difficulty then
 		if state.mode == "PvE" then
-			diffLabel.Text = `{string.upper(state.pveMode or "Normal")} • LEVEL {state.pveLevel or 1}`
+			if state.stageName and state.stageObjective then
+				diffLabel.Text = `{string.upper(state.pveMode or "Normal")} • LV {state.pveLevel or 1} • {string.upper(state.stageName)} • {state.stageObjective}`
+			else
+				diffLabel.Text = `{string.upper(state.pveMode or "Normal")} • LEVEL {state.pveLevel or 1}`
+			end
 		elseif state.opponentName then
 			diffLabel.Text = `VS {state.opponentName}`
 		else
@@ -871,6 +878,11 @@ local function refresh(state: { [string]: any })
 		end
 		local colors = { Normal = Color3.fromRGB(150, 200, 150), Hard = Color3.fromRGB(200, 180, 120), Impossible = Color3.fromRGB(220, 120, 120) }
 		diffLabel.TextColor3 = colors[state.pveMode or state.difficulty] or Color3.new(1, 1, 1)
+	end
+
+	if objectiveFrame.Visible and state.stageObjective then
+		objectiveTitle.Text = `GOAL: {state.stageObjective} • {string.upper(state.stageName or "")}`
+		evolveHint.Text = `{state.stageObjectiveDescription or ""} • {state.stageModifier or ""}: {state.stageModifierDescription or ""}`
 	end
 
 	evolveBtn.Visible = state.nextAgeXp ~= nil
@@ -1043,6 +1055,13 @@ function GameUI.start()
 		-- Victory/Defeat are handled by the MainMenu results screen
 		if event == "MatchStart" then
 			setQueueMode(false)
+			if data and data.stageObjective then
+				objectiveTitle.Text = `GOAL: {data.stageObjective} • {string.upper(data.stageName or "")}`
+				evolveHint.Text = `{data.stageObjectiveDescription or ""} • {data.stageModifier or ""}: {data.stageModifierDescription or ""}`
+			else
+				objectiveTitle.Text = "GOAL: DESTROY THE ENEMY BASE"
+				evolveHint.Text = "Kills grant XP • Evolve to unlock stronger armies"
+			end
 			showObjective()
 			local mode = data and data.mode
 			if mode == "PvP" then

@@ -84,6 +84,8 @@ export type Match = {
 	pveLevel: number?, -- Set for PvE mode
 	pveMode: string?, -- "Normal" | "Hard" | "Impossible"
 	mode: "PvE" | "PvP",
+	campaignStage: any?,
+	campaignBoss: UnitRecord?,
 	-- Bot fallback matches run on the PvE sim but present as PvP to the client.
 	botMatch: boolean?,
 	botName: string?,
@@ -118,7 +120,10 @@ end
 
 function Match.getBaseMaxHp(match: Match, side: string): number
 	local age = match.sides[side].age
-	return GameConfig.BASE_MAX_HP * GameConfig.BASE_HP_MULT_BY_AGE[age]
+	local stageMult = if match.mode == "PvE" and not match.botMatch and side == "B" and match.campaignStage
+		then match.campaignStage.enemyBaseHpMult
+		else 1
+	return GameConfig.BASE_MAX_HP * GameConfig.BASE_HP_MULT_BY_AGE[age] * stageMult
 end
 
 function Match.reduceHeroDamage(match: Match, side: string, amount: number): number
@@ -147,6 +152,9 @@ function Match.getIncomeRate(match: Match, side: string): number
 	-- PvE: the AI's gold production scales with the level.
 	if match.mode == "PvE" and side == "B" then
 		rate *= PvELevels.difficultyForLevel(match.pveMode or "Normal", match.pveLevel or 1).aiIncomeMult
+		if not match.botMatch and match.campaignStage then
+			rate *= match.campaignStage.aiIncomeMult
+		end
 	end
 	return rate
 end
@@ -177,6 +185,8 @@ function Match.new(map: MapBuilder.MapHandle, difficulty: string?): Match
 		pveLevel = nil,
 		pveMode = nil,
 		mode = "PvE" :: any,
+		campaignStage = nil,
+		campaignBoss = nil,
 		projectiles = {},
 		onAgeUp = nil,
 		onBaseDamaged = nil,
@@ -256,7 +266,10 @@ function Match.tryEvolve(match: Match, side: string, bypassXp: boolean?): boolea
 	local s = match.sides[side]
 	s.age += 1
 	local core = match.map.bases[side].core
-	local oldMax = GameConfig.BASE_MAX_HP * GameConfig.BASE_HP_MULT_BY_AGE[s.age - 1]
+	local stageMult = if match.mode == "PvE" and not match.botMatch and side == "B" and match.campaignStage
+		then match.campaignStage.enemyBaseHpMult
+		else 1
+	local oldMax = GameConfig.BASE_MAX_HP * GameConfig.BASE_HP_MULT_BY_AGE[s.age - 1] * stageMult
 	local newMax = Match.getBaseMaxHp(match, side)
 	local hpRatio = (core:GetAttribute("Hp") :: number) / oldMax
 	core:SetAttribute("Hp", math.max(1, math.floor(newMax * hpRatio)))
@@ -278,6 +291,15 @@ end
 function Match.damageBase(match: Match, side: string, amount: number, killerSide: string, isHeroKill: boolean?)
 	if match.status ~= "Active" then
 		return
+	end
+	-- Survival and boss-hunt stages are explicit alternate objectives. Keeping
+	-- this guard in the authoritative damage path prevents any weapon, unit, or
+	-- future damage source from bypassing the protected objective.
+	if side == "B" and match.campaignStage then
+		local objectiveKind = match.campaignStage.objective.kind
+		if objectiveKind == "Survive" or objectiveKind == "DefeatBoss" then
+			return
+		end
 	end
 	local core = match.map.bases[side].core
 	local elapsed = os.clock() - match.startedAt
@@ -356,6 +378,15 @@ function Match.buildSnapshot(match: Match, playerSide: string): { [string]: any 
 		playerSide = playerSide,
 		matchElapsed = elapsed,
 		pacePhase = pacePhase,
+		stageName = match.campaignStage and match.campaignStage.name or nil,
+		stageMap = match.campaignStage and match.campaignStage.mapVariant or nil,
+		stageObjective = match.campaignStage and match.campaignStage.objective.label or nil,
+		stageObjectiveDescription = match.campaignStage and match.campaignStage.objective.description or nil,
+		stageModifier = match.campaignStage and match.campaignStage.modifierLabel or nil,
+		stageModifierDescription = match.campaignStage and match.campaignStage.modifierDescription or nil,
+		objectiveRemaining = if match.campaignStage and match.campaignStage.objective.kind == "Survive"
+			then math.max(0, (match.campaignStage.objective.duration or 0) - elapsed)
+			else nil,
 	}
 end
 

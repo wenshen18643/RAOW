@@ -288,10 +288,14 @@ local function popQueue(match: Match.Match, s: Match.SideState, now: number)
 	local spawnCf = match.map.bases[s.side].unitSpawn
 	-- Five lateral lanes and four shallow rows prevent units spawning inside one
 	-- another while keeping every row safely in front of the base.
-	local formationIndex = (#s.units % #FORMATION_LANES) + 1
-	local row = math.floor(#s.units / #FORMATION_LANES)
+	local lanePattern = if match.mode == "PvE" and s.side == "B" and not match.botMatch
+			and match.campaignStage and #match.campaignStage.aiLanePattern > 0
+		then match.campaignStage.aiLanePattern
+		else FORMATION_LANES
+	local formationIndex = (#s.units % #lanePattern) + 1
+	local row = math.floor(#s.units / #lanePattern)
 	local backOff = math.min(row * 3, 9)
-	spawnCf = spawnCf * CFrame.new(FORMATION_LANES[formationIndex], 0, backOff)
+	spawnCf = spawnCf * CFrame.new(lanePattern[formationIndex], 0, backOff)
 	local model, body = buildUnitModel(def, s.side, spawnCf)
 	local owner = playerForSide(s.side)
 	body:SetAttribute("CommanderTitle", owner and owner:GetAttribute("CommanderTitle") or "")

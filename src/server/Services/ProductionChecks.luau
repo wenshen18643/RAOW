@@ -11,6 +11,7 @@ local HeroWeapons = require(ReplicatedStorage.Shared.Config.HeroWeapons)
 local Synergies = require(ReplicatedStorage.Shared.Config.Synergies)
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
+local CampaignStages = require(ReplicatedStorage.Shared.Config.CampaignStages)
 local MonetizationConfig = require(ReplicatedStorage.Shared.Config.MonetizationConfig)
 local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
 local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
@@ -23,6 +24,17 @@ local function check(value: boolean, message: string)
 end
 
 function ProductionChecks.run()
+	local seenMaps: { [string]: boolean } = {}
+	local seenObjectives: { [string]: boolean } = {}
+	for level = 1, 20 do
+		local stage = CampaignStages.forLevel(level)
+		check(#stage.aiFormation > 0 and #stage.aiLanePattern > 0, `PvE stage {level} needs an AI formation`)
+		check(stage.aiSpawnIntervalMult > 0 and stage.aiIncomeMult > 0 and stage.enemyBaseHpMult > 0, `PvE stage {level} has an invalid modifier`)
+		seenMaps[stage.mapVariant] = true
+		seenObjectives[stage.objective.kind] = true
+	end
+	check(seenMaps.Frontier and seenMaps.Canyon and seenMaps.Ruins and seenMaps.Frost, "PvE campaign must rotate all map variants")
+	check(seenObjectives.DestroyBase and seenObjectives.Survive and seenObjectives.DefeatBoss, "PvE campaign must expose all objective types")
 	check(#Ages == 5, "PvP progression must contain exactly five ages")
 	check(PvELevels.difficultyForLevel("Normal", 100).hpMult > PvELevels.difficultyForLevel("Normal", 50).hpMult, "endless PvE difficulty must keep scaling")
 	check(#GameConfig.PASSIVE_INCOME_BY_AGE == #Ages, "income table must cover every age")

@@ -13,6 +13,7 @@ local ContextActionService = game:GetService("ContextActionService")
 
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
+local CampaignStages = require(ReplicatedStorage.Shared.Config.CampaignStages)
 local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
 local MonetizationConfig = require(ReplicatedStorage.Shared.Config.MonetizationConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
@@ -597,11 +598,11 @@ function MainMenu.start()
 
 	local stagePreviewLabel = label(levelsPanel, {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.695, 0),
-		Size = UDim2.new(0.9, 0, 0.045, 0),
+		Position = UDim2.new(0.5, 0, 0.675, 0),
+		Size = UDim2.new(0.9, 0, 0.065, 0),
 		Text = "",
 		TextScaled = false,
-		TextSize = 15,
+		TextSize = 13,
 		TextWrapped = true,
 		TextColor3 = Color3.fromRGB(205, 205, 220),
 		ZIndex = 11,
@@ -626,11 +627,15 @@ function MainMenu.start()
 		playNextBtn.Text = `PLAY NEXT — LEVEL {prog + 1}`
 		playNextBtn.BackgroundColor3 = Color3.fromRGB(150, 110, 40)
 		local nextPreview = PvELevels.stagePreview(selectedPveMode, prog + 1)
+		local nextStage = CampaignStages.preview(prog + 1)
 		stagePreviewLabel.Text = string.format(
-			"NEXT: Enemy HP x%.2f  |  Damage x%.2f  |  Income x%.2f  |  Recommended: %d upgrade tiers - %s",
+			"NEXT: %s — %s / %s — %s\nEnemy HP x%.2f  |  Damage x%.2f  |  Recommended: %d tiers — %s",
+			nextStage.name,
+			string.upper(nextStage.map),
+			nextStage.objective,
+			nextStage.modifier,
 			nextPreview.hpMult,
 			nextPreview.damageMult,
-			nextPreview.incomeMult,
 			nextPreview.recommendedTiers,
 			nextPreview.guidance
 		)
@@ -654,18 +659,29 @@ function MainMenu.start()
 				Text = `Lv {lvl}`, TextColor3 = isLocked and Color3.fromRGB(100,100,100) or Color3.new(1,1,1), ZIndex = 13
 			})
 			local preview = PvELevels.stagePreview(selectedPveMode, lvl)
+			local stage = CampaignStages.preview(lvl)
 			label(btn, {
-				Position = UDim2.new(0.04, 0, 0.31, 0), Size = UDim2.new(0.92, 0, 0.2, 0),
-				Text = string.format("HP x%.1f  DMG x%.1f", preview.hpMult, preview.damageMult),
-				TextScaled = false, TextSize = 11,
+				Position = UDim2.new(0.04, 0, 0.29, 0), Size = UDim2.new(0.92, 0, 0.14, 0),
+				Text = string.format("%s • %s", string.upper(stage.map), stage.objective),
+				TextScaled = false, TextSize = 9,
 				TextColor3 = isLocked and Color3.fromRGB(90, 90, 95) or Color3.fromRGB(205, 215, 230), ZIndex = 13
 			})
-			if isBoss then
-				label(btn, {
-					Position = UDim2.new(0, 0, 0.51, 0), Size = UDim2.new(1, 0, 0.17, 0),
-					Text = "BOSS", TextColor3 = isLocked and Color3.fromRGB(120,60,60) or Color3.new(1,0.8,0.8), ZIndex = 13
-				})
-			end
+			label(btn, {
+				Position = UDim2.new(0.04, 0, 0.46, 0), Size = UDim2.new(0.92, 0, 0.14, 0),
+				Text = string.format("HP x%.1f  DMG x%.1f", preview.hpMult, preview.damageMult),
+				TextScaled = false, TextSize = 10,
+				TextColor3 = if isBoss and not isLocked then Color3.new(1, 0.8, 0.8)
+					elseif isLocked then Color3.fromRGB(90, 90, 95)
+					else Color3.fromRGB(205, 215, 230),
+				ZIndex = 13,
+			})
+			label(btn, {
+				Position = UDim2.new(0.04, 0, 0.61, 0), Size = UDim2.new(0.92, 0, 0.11, 0),
+				Text = stage.modifier,
+				TextScaled = false, TextSize = 8, TextTruncate = Enum.TextTruncate.AtEnd,
+				TextColor3 = isLocked and Color3.fromRGB(80, 80, 85) or Color3.fromRGB(240, 205, 125),
+				ZIndex = 13,
+			})
 			if isLocked then
 				label(btn, {
 					Position = UDim2.new(0, 0, 0.73, 0), Size = UDim2.new(1, 0, 0.18, 0),

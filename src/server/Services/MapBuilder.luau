@@ -18,6 +18,8 @@ export type MapHandle = {
 	folder: Folder,
 	bases: { [string]: BaseHandle },
 	laneY: number, -- ground top surface Y
+	ground: BasePart,
+	stageScenery: Folder?,
 }
 
 local MapBuilder = {}
@@ -167,6 +169,75 @@ function MapBuilder.evolveBase(map: MapHandle, side: string, newAge: number, col
 	base.visuals = base.model:FindFirstChild("Visuals") :: Model
 end
 
+local VARIANT_STYLE = {
+	Frontier = {
+		groundColor = Color3.fromRGB(106, 127, 63),
+		groundMaterial = Enum.Material.Grass,
+		accentColor = Color3.fromRGB(98, 86, 68),
+		accentMaterial = Enum.Material.Wood,
+	},
+	Canyon = {
+		groundColor = Color3.fromRGB(156, 105, 67),
+		groundMaterial = Enum.Material.Sand,
+		accentColor = Color3.fromRGB(116, 70, 46),
+		accentMaterial = Enum.Material.Sandstone,
+	},
+	Ruins = {
+		groundColor = Color3.fromRGB(92, 96, 90),
+		groundMaterial = Enum.Material.Slate,
+		accentColor = Color3.fromRGB(118, 118, 112),
+		accentMaterial = Enum.Material.Cobblestone,
+	},
+	Frost = {
+		groundColor = Color3.fromRGB(190, 210, 218),
+		groundMaterial = Enum.Material.Snow,
+		accentColor = Color3.fromRGB(133, 178, 196),
+		accentMaterial = Enum.Material.Ice,
+	},
+}
+
+-- Applies lightweight, deterministic stage dressing. All pieces are anchored,
+-- non-interactive scenery so the server simulation and nav lanes stay stable.
+function MapBuilder.applyVariant(map: MapHandle, variantId: string)
+	if map.stageScenery then
+		map.stageScenery:Destroy()
+	end
+
+	local style = VARIANT_STYLE[variantId] or VARIANT_STYLE.Frontier
+	map.ground.Color = style.groundColor
+	map.ground.Material = style.groundMaterial
+	map.folder:SetAttribute("StageVariant", variantId)
+
+	local scenery = Instance.new("Folder")
+	scenery.Name = "StageScenery"
+	scenery.Parent = map.folder
+	map.stageScenery = scenery
+
+	for i = 1, 6 do
+		local x = -LANE_LEN / 2 + i * (LANE_LEN / 7)
+		local zSign = if i % 2 == 0 then 1 else -1
+		local z = zSign * (LANE_WID / 2 + 20)
+		local size = if variantId == "Ruins"
+			then Vector3.new(8, 10 + (i % 3) * 4, 8)
+			elseif variantId == "Canyon"
+			then Vector3.new(12, 8 + (i % 2) * 5, 14)
+			else Vector3.new(6, 7 + (i % 3) * 3, 6)
+		local piece = part({
+			Name = `{variantId}Landmark`,
+			Size = size,
+			CFrame = CFrame.new(x, GROUND_Y + size.Y / 2, z)
+				* CFrame.Angles(0, math.rad((i * 37) % 90), 0),
+			Color = style.accentColor,
+			Material = style.accentMaterial,
+			CanCollide = false,
+			Parent = scenery,
+		})
+		if variantId == "Frost" then
+			piece.Transparency = 0.12
+		end
+	end
+end
+
 function MapBuilder.build(): MapHandle
 	local folder = Instance.new("Folder")
 	folder.Name = "Map"
@@ -174,7 +245,7 @@ function MapBuilder.build(): MapHandle
 	local totalLen = LANE_LEN + 80
 
 	-- Ground
-	part({
+	local ground = part({
 		Name = "Ground",
 		Size = Vector3.new(totalLen, 4, LANE_WID + 60),
 		CFrame = CFrame.new(0, GROUND_Y - 2, 0),
@@ -266,6 +337,8 @@ function MapBuilder.build(): MapHandle
 		folder = folder,
 		bases = bases,
 		laneY = GROUND_Y,
+		ground = ground,
+		stageScenery = nil,
 	}
 end
 

@@ -109,6 +109,35 @@ local function rebuildTurretsForNewAge(match: Match.Match)
 	end
 end
 
+local function bossAreaDamage(match: Match.Match, bossRec: Match.UnitRecord, pos: Vector3, radius: number, bossConf: any, knockback: boolean)
+	local rawDamage = bossRec.scaledDamage * bossConf.slamDamageMult
+	local enemySide = Match.enemyOf(SIDE)
+	for _, enemyRec in match.sides[enemySide].units do
+		if not enemyRec.dead and (enemyRec.body.Position - pos).Magnitude <= radius then
+			local damage = math.min(rawDamage, enemyRec.maxHp * bossConf.slamMaxUnitHpRatio)
+			UnitSim.damageUnit(match, enemyRec, damage, SIDE, false)
+			enemyRec.nextAttackAt = os.clock() + bossConf.slamStunDuration
+		end
+	end
+
+	for _, player in game:GetService("Players"):GetPlayers() do
+		if player:GetAttribute("Side") == enemySide and player.Character then
+			local root = player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+			if root and humanoid and humanoid.Health > 0 and (root.Position - pos).Magnitude <= radius then
+				local damage = Match.reduceHeroDamage(match, enemySide, math.min(rawDamage, humanoid.MaxHealth * bossConf.slamMaxHeroHpRatio))
+				humanoid:TakeDamage(damage)
+				if knockback then
+					local away = root.Position - pos
+					local flatAway = Vector3.new(away.X, 0, away.Z)
+					local direction = flatAway.Magnitude > 0.1 and flatAway.Unit or Vector3.new(0, 0, 1)
+					root.AssemblyLinearVelocity += direction * 36 + Vector3.new(0, 18, 0)
+				end
+			end
+		end
+	end
+end
+
 function AIBrain.tick(match: Match.Match)
 	if match.status ~= "Active" then
 		return
@@ -131,6 +160,7 @@ function AIBrain.tick(match: Match.Match)
 			counterSpawns = 0,
 			counterRole = nil,
 			bossSpawned = false,
+			formationIndex = 1,
 		}
 		aiState[match] = state
 	end
@@ -178,50 +208,70 @@ function AIBrain.tick(match: Match.Match)
 							bossRec.maxHp = bossDef.hp
 							bossRec.scaledDamage = bossDef.damage
 							UnitSim.refreshHpBar(bossRec)
-							
-							-- Periodic Slam
-							task.spawn(function()
-								while not bossRec.dead and match.status == "Active" do
-									task.wait(bossConf.slamCooldown)
-									if bossRec.dead or match.status ~= "Active" then break end
+							match.campaignBoss = bossRec
 
-									local slamPos = bossRec.body.Position
-									Remotes.FX:FireAllClients("BossSlamWarning", {
-										pos = slamPos,
-										radius = bossConf.slamRadius,
-										duration = bossConf.slamTelegraphDuration,
-									})
-									task.wait(bossConf.slamTelegraphDuration)
-									if bossRec.dead or match.status ~= "Active" then break end
-									Remotes.FX:FireAllClients("ImpactVFX", { pos = slamPos, age = 5 })
-									local rawSlamDamage = bossRec.scaledDamage * bossConf.slamDamageMult
-
-									local enemySide = Match.enemyOf(SIDE)
-									for _, enemyRec in match.sides[enemySide].units do
-										if not enemyRec.dead and (enemyRec.body.Position - slamPos).Magnitude <= bossConf.slamRadius then
-											local damage = math.min(rawSlamDamage, enemyRec.maxHp * bossConf.slamMaxUnitHpRatio)
-											UnitSim.damageUnit(match, enemyRec, damage, SIDE, false)
-											-- Brief stun: push the unit's next attack window out.
-											enemyRec.nextAttackAt = os.clock() + bossConf.slamStunDuration
-										end
+							local mechanic = if match.campaignStage then match.campaignStage.bossMechanic or "Slam" else "Slam"
+							if string.find(mechanic, "Slam", 1, true) then
+								task.spawn(function()
+									while not bossRec.dead and match.status == "Active" do
+										task.wait(bossConf.slamCooldown)
+										if bossRec.dead or match.status ~= "Active" then break end
+										local slamPos = bossRec.body.Position
+										Remotes.FX:FireAllClients("BossSlamWarning", {
+											pos = slamPos,
+											radius = bossConf.slamRadius,
+											duration = bossConf.slamTelegraphDuration,
+										})
+										task.wait(bossConf.slamTelegraphDuration)
+										if bossRec.dead or match.status ~= "Active" then break end
+										Remotes.FX:FireAllClients("ImpactVFX", { pos = slamPos, age = 5 })
+										bossAreaDamage(match, bossRec, slamPos, bossConf.slamRadius, bossConf, true)
 									end
+								end)
+							end
 
-									for _, p in game:GetService("Players"):GetPlayers() do
-										if p:GetAttribute("Side") == enemySide and p.Character then
-											local hrp = p.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-											local hum = p.Character:FindFirstChildOfClass("Humanoid")
-											if hrp and hum and hum.Health > 0 and (hrp.Position - slamPos).Magnitude <= bossConf.slamRadius then
-												local heroDamage = Match.reduceHeroDamage(match, enemySide, math.min(rawSlamDamage, hum.MaxHealth * bossConf.slamMaxHeroHpRatio))
-												hum:TakeDamage(heroDamage)
-												local away = hrp.Position - slamPos
-												local flatAway = Vector3.new(away.X, 0, away.Z)
-												local knockDir = flatAway.Magnitude > 0.1 and flatAway.Unit or Vector3.new(0, 0, 1)
-												hrp.AssemblyLinearVelocity += knockDir * 36 + Vector3.new(0, 18, 0)
+							if string.find(mechanic, "Reinforcements", 1, true) then
+								task.spawn(function()
+									while not bossRec.dead and match.status == "Active" do
+										task.wait(14)
+										if bossRec.dead or match.status ~= "Active" then break end
+										for _, role in { "melee", "ranged" } do
+											if #s.queue >= GameConfig.QUEUE_CAP then break end
+											local escort = Units.byId[`age{s.age}_{role}`]
+											if escort then table.insert(s.queue, escort.id) end
+										end
+										Remotes.FX:FireAllClients("ImpactVFX", { pos = bossRec.body.Position, age = 2 })
+									end
+								end)
+							end
+
+							if string.find(mechanic, "Barrage", 1, true) then
+								task.spawn(function()
+									while not bossRec.dead and match.status == "Active" do
+										task.wait(10)
+										if bossRec.dead or match.status ~= "Active" then break end
+										local targetPos: Vector3? = nil
+										for _, player in game:GetService("Players"):GetPlayers() do
+											if player:GetAttribute("Side") == Match.enemyOf(SIDE) and player.Character then
+												local root = player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+												if root then targetPos = root.Position break end
 											end
 										end
+										if targetPos then
+											local radius = math.max(8, bossConf.slamRadius * 0.7)
+											Remotes.FX:FireAllClients("BossSlamWarning", {
+												pos = targetPos,
+												radius = radius,
+												duration = 1.4,
+											})
+											task.wait(1.4)
+											if bossRec.dead or match.status ~= "Active" then break end
+											Remotes.FX:FireAllClients("ImpactVFX", { pos = targetPos, age = 4 })
+											bossAreaDamage(match, bossRec, targetPos, radius, bossConf, false)
+										end
 									end
-								end
-							end)
+								end)
+							end
 						end
 					end)
 				end
@@ -310,6 +360,11 @@ function AIBrain.tick(match: Match.Match)
 			if state.counterSpawns > 0 and state.counterRole then
 				unitId = pickUnit(s.age, state.counterRole)
 				state.counterSpawns -= 1
+			elseif match.campaignStage and #match.campaignStage.aiFormation > 0 then
+				local formation = match.campaignStage.aiFormation
+				local role = formation[((state.formationIndex - 1) % #formation) + 1]
+				state.formationIndex += 1
+				unitId = pickUnit(s.age, role)
 			else
 				unitId = pickUnit(s.age, nil)
 			end
@@ -330,7 +385,8 @@ function AIBrain.tick(match: Match.Match)
 
 			if unitId then
 				if UnitSim.requestSpawn(match, SIDE, unitId, false) then
-					state.nextSpawnAt = now + diffConfig.aiSpawnInterval
+					local stageMult = if match.campaignStage then match.campaignStage.aiSpawnIntervalMult else 1
+					state.nextSpawnAt = now + diffConfig.aiSpawnInterval * stageMult
 				end
 			end
 		end
