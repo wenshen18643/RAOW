@@ -16,6 +16,7 @@ local NAMES = {
 	"BuyUpgrade", -- (stat: string)
 	"SelectMode", -- (mode: "pve" | "pvp", difficultyName: string?)
 	"CancelQueue", -- () leave PvP matchmaking before an opponent is assigned
+	"SurrenderMatch", -- () confirmed active-match forfeit
 	"ResultAction", -- ("replay" | "next" | "menu") explicit post-match choice
 	"RequestProfile", -- () client asks for a ProfileSync once its listener is ready
 	"RequestLeaderboard", -- (boardType: string?) client asks for the current top-rating board

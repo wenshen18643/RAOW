@@ -863,17 +863,86 @@ function MainMenu.start()
 	local matchControls = Instance.new("Frame")
 	matchControls.AnchorPoint = Vector2.new(1, 0)
 	matchControls.Position = UDim2.fromScale(0.985, 0.13)
-	matchControls.Size = UDim2.fromOffset(150, 44)
+	matchControls.Size = UDim2.fromOffset(310, 44)
 	matchControls.BackgroundTransparency = 1
 	matchControls.Visible = false
 	matchControls.ZIndex = 30
 	matchControls.Parent = gui
 	local matchSettingsButton = button(matchControls,
 		UserInputService.TouchEnabled and "SETTINGS" or "SETTINGS [P]",
-		UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1), Color3.fromRGB(55, 65, 90), function()
+		UDim2.fromScale(0.245, 0.5), UDim2.fromScale(0.47, 1), Color3.fromRGB(55, 65, 90), function()
 			settingsPanel.Visible = not settingsPanel.Visible
 		end)
 	matchSettingsButton.ZIndex = 31
+
+	local surrenderConfirm = Instance.new("Frame")
+	surrenderConfirm.AnchorPoint = Vector2.new(0.5, 0.5)
+	surrenderConfirm.Position = UDim2.fromScale(0.5, 0.5)
+	surrenderConfirm.Size = UDim2.new(0.82, 0, 0, 230)
+	surrenderConfirm.BackgroundColor3 = PANEL
+	surrenderConfirm.BorderSizePixel = 0
+	surrenderConfirm.Visible = false
+	surrenderConfirm.Active = true
+	surrenderConfirm.ZIndex = 80
+	surrenderConfirm.Parent = gui
+	corner(surrenderConfirm, 14)
+	local surrenderScale = Instance.new("UISizeConstraint")
+	surrenderScale.MinSize = Vector2.new(280, 210)
+	surrenderScale.MaxSize = Vector2.new(520, 250)
+	surrenderScale.Parent = surrenderConfirm
+	label(surrenderConfirm, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.08),
+		Size = UDim2.new(0.86, 0, 0, 40),
+		Text = "LEAVE ACTIVE MATCH?",
+		Font = FONT_BLACK,
+		ZIndex = 81,
+	})
+	local surrenderWarning = label(surrenderConfirm, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.29),
+		Size = UDim2.new(0.86, 0, 0, 70),
+		Text = "",
+		TextScaled = false,
+		TextSize = 18,
+		TextWrapped = true,
+		TextColor3 = Color3.fromRGB(235, 205, 145),
+		ZIndex = 81,
+	})
+	local surrenderYes = button(surrenderConfirm, "SURRENDER", UDim2.fromScale(0.35, 0.78), UDim2.new(0.26, 0, 0, 48), Color3.fromRGB(150, 55, 52), function()
+		surrenderConfirm.Visible = false
+		Remotes.SurrenderMatch:FireServer()
+	end)
+	surrenderYes.ZIndex = 81
+	local surrenderNo = button(surrenderConfirm, "KEEP PLAYING", UDim2.fromScale(0.68, 0.78), UDim2.new(0.32, 0, 0, 48), Color3.fromRGB(55, 95, 75), function()
+		surrenderConfirm.Visible = false
+	end)
+	surrenderNo.ZIndex = 81
+	local surrenderButton = button(matchControls, "LEAVE MATCH", UDim2.fromScale(0.755, 0.5), UDim2.fromScale(0.47, 1), Color3.fromRGB(120, 52, 52), function()
+		surrenderWarning.Text = if lastMode == "PvP"
+			then "This counts as a ranked loss and your rating will decrease. A disconnect has the same result after a short reconnect grace period."
+			else "This ends the run immediately and records a defeat. Current match rewards will be forfeited."
+		surrenderConfirm.Visible = true
+		UISelection.focus(surrenderConfirm, surrenderNo)
+	end)
+	surrenderButton.ZIndex = 31
+	UISelection.bind(surrenderConfirm, surrenderNo, function()
+		surrenderConfirm.Visible = false
+	end)
+
+	local reconnectBanner = label(gui, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.08),
+		Size = UDim2.new(0.72, 0, 0, 48),
+		BackgroundTransparency = 0.15,
+		BackgroundColor3 = Color3.fromRGB(80, 55, 22),
+		Text = "",
+		TextWrapped = true,
+		Visible = false,
+		ZIndex = 79,
+	})
+	corner(reconnectBanner, 10)
+	local reconnectNoticeId = 0
 
 	local settingsCursorBinding = "MatchSettingsCursorUnlock"
 	settingsPanel:GetPropertyChangedSignal("Visible"):Connect(function()
@@ -1152,6 +1221,8 @@ function MainMenu.start()
 
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
 		if event == "Victory" or event == "Defeat" then
+			reconnectBanner.Visible = false
+			surrenderConfirm.Visible = false
 			showResults(event == "Victory", (data and data.decisionIn) or 30, data and data.ratingDelta, data and data.xpData, data and data.coins, data and data.firstClear, data and data.dailyWarBonds, data and data.canNextStage)
 		elseif event == "MatchStart" then
 			inMatch = true
@@ -1189,6 +1260,24 @@ function MainMenu.start()
 				startOrbit()
 				GameUI.setHudVisible(false)
 			end
+		elseif event == "OpponentDisconnected" then
+			reconnectNoticeId += 1
+			local noticeId = reconnectNoticeId
+			local grace = math.max(1, math.floor((data and data.grace) or 15))
+			reconnectBanner.Visible = true
+			task.spawn(function()
+				for remaining = grace, 1, -1 do
+					if reconnectNoticeId ~= noticeId then return end
+					reconnectBanner.Text = `Opponent disconnected — reconnect grace: {remaining}s. The battle remains active until they return or forfeit.`
+					task.wait(1)
+				end
+			end)
+		elseif event == "OpponentReconnected" then
+			reconnectNoticeId += 1
+			reconnectBanner.Text = "Opponent reconnected."
+			task.delay(2, function()
+				if reconnectBanner.Text == "Opponent reconnected." then reconnectBanner.Visible = false end
+			end)
 		end
 	end)
 

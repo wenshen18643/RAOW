@@ -60,6 +60,8 @@ local expectedMatchId: string? = nil
 local matchMode: "PvE" | "PvP" = "PvE"
 local simAccum = 0
 local rematchVotes: { [Player]: boolean } = {}
+local RECONNECT_GRACE = 15
+local disconnectedPlayers: { [number]: { player: Player, side: string, match: Match.Match } } = {}
 
 local function sideFor(player: Player): string?
 	return playerSides[player]
@@ -136,6 +138,7 @@ local function clearMatchState()
 	actionTimes = {}
 	expectedMatchId = nil
 	joinTimeoutScheduled = false
+	disconnectedPlayers = {}
 
 	if isLobby or isStudio then
 		for _, player in Players:GetPlayers() do
@@ -442,11 +445,46 @@ local function initReservedServer()
 	local initialized = false
 
 	Players.PlayerAdded:Connect(function(player)
-		loadPlayerProfile(player)
 		local joinData = player:GetJoinData()
 		local teleportData = joinData.TeleportData
 		
 		local tdMode = typeof(teleportData) == "table" and teleportData.mode or nil
+		local disconnected = disconnectedPlayers[player.UserId]
+		local reconnectTicketValid = disconnected ~= nil and currentMatch == disconnected.match and currentMatch.status == "Active"
+			and typeof(teleportData) == "table"
+			and joinData.SourcePlaceId == game.PlaceId
+			and teleportData.mode == "pvp_match"
+			and teleportData.matchId == expectedMatchId
+			and typeof(teleportData.userIds) == "table"
+			and ((disconnected.side == "A" and teleportData.userIds[1] == player.UserId)
+				or (disconnected.side == "B" and teleportData.userIds[2] == player.UserId))
+		if disconnected and reconnectTicketValid then
+			if not PlayerData.transferSession(disconnected.player, player) then
+				player:Kick("Your match session is still saving. Please rejoin the lobby.")
+				return
+			end
+			disconnectedPlayers[player.UserId] = nil
+			playerSides[disconnected.player] = nil
+			playerReady[disconnected.player] = nil
+			actionTimes[disconnected.player] = nil
+			assignPlayer(player, disconnected.side)
+			playerReady[player] = true
+			player.CameraMode = Enum.CameraMode.LockFirstPerson
+			player:LoadCharacter()
+			PlayerData.sync(player)
+			Remotes.MatchEvent:FireClient(player, "MatchStart", { difficulty = currentMatch.difficulty, mode = "PvP", reconnected = true })
+			for _, other in Players:GetPlayers() do
+				if other ~= player then
+					Remotes.MatchEvent:FireClient(other, "OpponentReconnected", {})
+				end
+			end
+			return
+		elseif disconnected then
+			player:Kick("Invalid or expired reconnect ticket.")
+			return
+		end
+
+		loadPlayerProfile(player)
 		if not initialized then
 			if tdMode == "pve_match" or tdMode == "pvp_bot_match" then
 				matchMode = "PvE"
@@ -524,6 +562,19 @@ local function initReservedServer()
 end
 
 -- Remote handlers
+Remotes.SurrenderMatch.OnServerEvent:Connect(function(player)
+	local match = currentMatch
+	local side = sideFor(player)
+	if not match or not side or match.status ~= "Active" or not allowRate(player, "surrender", 2) then
+		Telemetry.count("remote_rejected_surrender")
+		return
+	end
+	match.status = "Ended"
+	match.winner = Match.enemyOf(side)
+	Telemetry.event(player, "match_surrendered", os.clock() - match.startedAt, { mode = matchMode })
+	if match.onEnd then match.onEnd(match.winner :: string) end
+end)
+
 Remotes.SpawnUnit.OnServerEvent:Connect(function(player, unitId)
 	local match = currentMatch
 	local side = sideFor(player)
@@ -906,10 +957,32 @@ else
 
 	Players.PlayerRemoving:Connect(function(player)
 		local side = sideFor(player)
-		if side and currentMatch and currentMatch.status == "Active" then
-			currentMatch.status = "Ended"
-			currentMatch.winner = Match.enemyOf(side)
-			if currentMatch.onEnd then currentMatch.onEnd(currentMatch.winner :: string) end
+		local leavingMatch = currentMatch
+		if side and leavingMatch and leavingMatch.status == "Active" and matchMode == "PvP" and not leavingMatch.botMatch then
+			disconnectedPlayers[player.UserId] = { player = player, side = side, match = leavingMatch }
+			for _, other in Players:GetPlayers() do
+				if other ~= player then
+					Remotes.MatchEvent:FireClient(other, "OpponentDisconnected", { grace = RECONNECT_GRACE })
+				end
+			end
+			task.delay(RECONNECT_GRACE, function()
+				local record = disconnectedPlayers[player.UserId]
+				if not record or record.player ~= player or currentMatch ~= leavingMatch or leavingMatch.status ~= "Active" then return end
+				disconnectedPlayers[player.UserId] = nil
+				leavingMatch.status = "Ended"
+				leavingMatch.winner = Match.enemyOf(side)
+				if leavingMatch.onEnd then leavingMatch.onEnd(leavingMatch.winner :: string) end
+				playerSides[player] = nil
+				sidePlayers[side] = nil
+				playerReady[player] = nil
+				actionTimes[player] = nil
+				PlayerData.unload(player)
+			end)
+			return
+		elseif side and leavingMatch and leavingMatch.status == "Active" then
+			leavingMatch.status = "Ended"
+			leavingMatch.winner = Match.enemyOf(side)
+			if leavingMatch.onEnd then leavingMatch.onEnd(leavingMatch.winner :: string) end
 		end
 		playerSides[player] = nil
 		if side then sidePlayers[side] = nil end

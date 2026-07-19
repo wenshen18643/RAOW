@@ -506,6 +506,21 @@ function PlayerData.unload(player: Player)
 	loadState[player] = nil
 end
 
+-- Moves a still-loaded profile to a replacement Player object after a brief
+-- same-server reconnect. The reserved match server validates the original
+-- signed teleport payload before calling this.
+function PlayerData.transferSession(fromPlayer: Player, toPlayer: Player): boolean
+	local profile = cache[fromPlayer]
+	if not profile or cache[toPlayer] or saving[fromPlayer] then return false end
+	cache[toPlayer] = profile
+	cache[fromPlayer] = nil
+	loadState[toPlayer] = loadState[fromPlayer]
+	loadState[fromPlayer] = nil
+	saveRequested[toPlayer] = saveRequested[fromPlayer]
+	saveRequested[fromPlayer] = nil
+	return true
+end
+
 -- Applies one idempotent match result to both loaded profiles. The caller owns
 -- match-level idempotency and invokes this exactly once per match.
 -- Bot fallback matches are unranked so waiting out the human queue cannot be
