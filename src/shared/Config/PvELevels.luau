@@ -82,9 +82,10 @@ function PvELevels.difficultyForLevel(mode: string, level: number): DifficultyDe
 	}
 end
 
-function PvELevels.recommendedPower(level: number): { totalUpgradeTiers: number, guidance: string }
+function PvELevels.recommendedPower(mode: string, level: number): { totalUpgradeTiers: number, guidance: string }
 	level = math.max(math.floor(level), 1)
-	local tiers = math.clamp(math.floor((level - 1) / 2), 0, 28)
+	local difficultyOffset = if mode == "Impossible" then 8 elseif mode == "Hard" then 4 else 0
+	local tiers = math.clamp(math.floor((level - 1) / 2) + difficultyOffset, 0, 28)
 	local guidance = if tiers == 0 then "No permanent upgrades required"
 		elseif tiers < 6 then "Invest in HP or Damage"
 		elseif tiers < 16 then "Balance HP, Damage, and Starting Gold"
@@ -101,7 +102,7 @@ function PvELevels.stagePreview(mode: string, level: number): {
 	guidance: string,
 }
 	local diff = PvELevels.difficultyForLevel(mode, level)
-	local recommendation = PvELevels.recommendedPower(level)
+	local recommendation = PvELevels.recommendedPower(mode, level)
 	return {
 		hpMult = diff.hpMult,
 		damageMult = diff.damageMult,

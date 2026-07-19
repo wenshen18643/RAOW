@@ -14,6 +14,11 @@ local musicConfig = require(shared.Config.MusicConfig)
 local remotes = require(shared.Remotes)
 
 assert(pve.difficultyForLevel("Normal", 100).hpMult > pve.difficultyForLevel("Normal", 50).hpMult, "endless PvE difficulty must keep scaling")
+assert(
+	pve.recommendedPower("Impossible", 10).totalUpgradeTiers > pve.recommendedPower("Hard", 10).totalUpgradeTiers
+		and pve.recommendedPower("Hard", 10).totalUpgradeTiers > pve.recommendedPower("Normal", 10).totalUpgradeTiers,
+	"PvE recommended power must increase with selected difficulty"
+)
 local expectedBosses = { "age1_heavy", "age2_heavy", "age3_heavy", "age4_heavy", "age5_super_heavy" }
 for tier, unitId in expectedBosses do
 	local boss = pve.getBossConfig("Normal", tier * 5)

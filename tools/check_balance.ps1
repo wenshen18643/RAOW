@@ -100,6 +100,15 @@ if (-not $endlessScaling) { throw "Endless PvE difficulty scaling is missing." }
 $stagePreview = Select-String -Path $pvePath -Pattern 'function PvELevels\.stagePreview' | Select-Object -First 1
 $recommendedPower = Select-String -Path $pvePath -Pattern 'function PvELevels\.recommendedPower' | Select-Object -First 1
 if (-not $stagePreview -or -not $recommendedPower) { throw "PvE difficulty must expose stage multipliers and upgrade guidance." }
+$modeAwareRecommendation = Select-String -Path $pvePath -Pattern 'function PvELevels\.recommendedPower\(mode: string, level: number\)' | Select-Object -First 1
+$impossibleOffset = Select-String -Path $pvePath -Pattern 'mode == "Impossible" then (?<offset>\d+)' | Select-Object -First 1
+$hardOffset = Select-String -Path $pvePath -Pattern 'mode == "Hard" then (?<offset>\d+)' | Select-Object -First 1
+if (-not $modeAwareRecommendation -or -not $impossibleOffset -or -not $hardOffset) {
+    throw "PvE upgrade guidance must account for selected difficulty."
+}
+if ([int]$impossibleOffset.Matches[0].Groups['offset'].Value -le [int]$hardOffset.Matches[0].Groups['offset'].Value) {
+    throw "Impossible recommendation must exceed Hard recommendation."
+}
 $hpCeiling = Select-String -Path $pvePath -Pattern 'local baseHpMult = math\.min\(.+, (?<cap>[0-9.]+)\)' | Select-Object -First 1
 $damageCeiling = Select-String -Path $pvePath -Pattern 'local baseDamageMult = math\.min\(.+, (?<cap>[0-9.]+)\)' | Select-Object -First 1
 if (-not $hpCeiling -or [double]$hpCeiling.Matches[0].Groups['cap'].Value -gt 6) { throw "Endless enemy HP scaling lacks a fair ceiling." }
