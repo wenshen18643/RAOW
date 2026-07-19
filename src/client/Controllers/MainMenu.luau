@@ -235,6 +235,7 @@ local function panel(parent: Instance, size: UDim2): Frame
 	f.BackgroundColor3 = PANEL
 	f.BackgroundTransparency = 0.06
 	f.BorderSizePixel = 0
+	f.Active = true
 	f.Visible = false
 	f.ZIndex = 10
 	f.Parent = parent
@@ -858,6 +859,43 @@ function MainMenu.start()
 		settingsPanel.Visible = false
 	end).ZIndex = 11
 
+	local inMatch = false
+	local matchControls = Instance.new("Frame")
+	matchControls.AnchorPoint = Vector2.new(1, 0)
+	matchControls.Position = UDim2.fromScale(0.985, 0.13)
+	matchControls.Size = UDim2.fromOffset(150, 44)
+	matchControls.BackgroundTransparency = 1
+	matchControls.Visible = false
+	matchControls.ZIndex = 30
+	matchControls.Parent = gui
+	local matchSettingsButton = button(matchControls,
+		UserInputService.TouchEnabled and "SETTINGS" or "SETTINGS [P]",
+		UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1), Color3.fromRGB(55, 65, 90), function()
+			settingsPanel.Visible = not settingsPanel.Visible
+		end)
+	matchSettingsButton.ZIndex = 31
+
+	local settingsCursorBinding = "MatchSettingsCursorUnlock"
+	settingsPanel:GetPropertyChangedSignal("Visible"):Connect(function()
+		local openDuringMatch = inMatch and settingsPanel.Visible
+		player:SetAttribute("SettingsOpen", openDuringMatch)
+		if openDuringMatch then
+			RunService:BindToRenderStep(settingsCursorBinding, Enum.RenderPriority.Camera.Value + 1, function()
+				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			end)
+			UISelection.focus(settingsPanel)
+		else
+			RunService:UnbindFromRenderStep(settingsCursorBinding)
+		end
+	end)
+	ContextActionService:BindActionAtPriority("ToggleMatchSettings", function(_, inputState)
+		if not inMatch then return Enum.ContextActionResult.Pass end
+		if inputState == Enum.UserInputState.Begin then
+			settingsPanel.Visible = not settingsPanel.Visible
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.ButtonStart, Enum.KeyCode.P)
+
 	--------------------------------------------------------------------------------
 	-- how-to-play panel
 	--------------------------------------------------------------------------------
@@ -960,6 +998,9 @@ function MainMenu.start()
 	end).ZIndex = 9
 
 	local function showResults(won: boolean, decisionIn: number, ratingDelta: number?, xpData: any, coins: number?, firstClear: boolean?, dailyWarBonds: number?, canNextStage: boolean?)
+		inMatch = false
+		matchControls.Visible = false
+		settingsPanel.Visible = false
 		if lobbyHud then lobbyHud.Visible = false end
 		local dur = os.clock() - matchStartAt
 		local mins = math.floor(dur / 60)
@@ -1113,6 +1154,8 @@ function MainMenu.start()
 		if event == "Victory" or event == "Defeat" then
 			showResults(event == "Victory", (data and data.decisionIn) or 30, data and data.ratingDelta, data and data.xpData, data and data.coins, data and data.firstClear, data and data.dailyWarBonds, data and data.canNextStage)
 		elseif event == "MatchStart" then
+			inMatch = true
+			matchControls.Visible = true
 			resultWaitingRematch = false
 			matchStartAt = os.clock()
 			results.Visible = false
@@ -1128,6 +1171,9 @@ function MainMenu.start()
 		elseif event == "ReturnError" and data then
 			resultCountdown.Text = data.message or "Couldn't return to the lobby. Press Return to retry."
 		elseif event == "ReturnToMenu" then
+			inMatch = false
+			matchControls.Visible = false
+			settingsPanel.Visible = false
 			results.Visible = false
 			closePanels()
 			if isLobbyServer then

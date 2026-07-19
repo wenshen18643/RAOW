@@ -27,6 +27,7 @@ function Weapon.setAge(age: number)
 end
 
 local function tryFire()
+	if player:GetAttribute("SettingsOpen") == true then return end
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not char or not hum or hum.Health <= 0 then
@@ -49,6 +50,7 @@ local function tryFire()
 end
 
 local function tryFireSecondary()
+	if player:GetAttribute("SettingsOpen") == true then return end
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not char or not hum or hum.Health <= 0 then

@@ -26,6 +26,9 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local FONT = Enum.Font.GothamBold
+local function settingsOpen(): boolean
+	return player:GetAttribute("SettingsOpen") == true
+end
 
 local function label(parent: Instance, props: { [string]: any }): TextLabel
 	local l = Instance.new("TextLabel")
@@ -415,7 +418,10 @@ local function turretActionButton(parent: Instance, text: string, position: UDim
 	local itemCorner = Instance.new("UICorner")
 	itemCorner.CornerRadius = UDim.new(0, 6)
 	itemCorner.Parent = item
-	item.Activated:Connect(callback)
+	item.Activated:Connect(function()
+		if settingsOpen() then return end
+		callback()
+	end)
 	return item
 end
 
@@ -467,6 +473,7 @@ UISelection.bind(turretPanel, turretRows[1] and turretRows[1].primary or closeTu
 end)
 
 local function toggleTurrets()
+	if settingsOpen() then return end
 	Audio.play("click")
 	turretPanel.Visible = not turretPanel.Visible
 	guidePanel.Visible = false
@@ -475,6 +482,7 @@ end
 turretButton.Activated:Connect(toggleTurrets)
 
 local function toggleGuide()
+	if settingsOpen() then return end
 	Audio.play("click")
 	guidePanel.Visible = not guidePanel.Visible
 	upgradesPanel.Visible = false
@@ -496,6 +504,7 @@ local function makeUpgBtn(stat: string, text: string)
 	local costL = label(b, { Size = UDim2.fromScale(1, 0.4), Position = UDim2.fromScale(0, 0.6), Text = "500 g", TextColor3 = Color3.fromRGB(255, 220, 80) })
 	upgButtons[stat] = { btn = b, cost = costL }
 	b.Activated:Connect(function()
+		if settingsOpen() then return end
 		Audio.play("click")
 		Remotes.BuyUpgrade:FireServer(stat)
 	end)
@@ -509,6 +518,7 @@ UISelection.bind(upgradesPanel, upgButtons.dmg.btn, function()
 end)
 
 upgradesToggle.Activated:Connect(function()
+	if settingsOpen() then return end
 	Audio.play("click")
 	upgradesPanel.Visible = not upgradesPanel.Visible
 	guidePanel.Visible = false
@@ -639,6 +649,7 @@ local function rejectAction(reason: string)
 end
 
 local function slotAction(i: number)
+	if settingsOpen() then return end
 	local age = lastState.age or 1
 	if i <= 4 then
 		local def = Units.byAge[age][i]
@@ -685,6 +696,7 @@ for i, slot in slots do
 	end)
 end
 evolveBtn.Activated:Connect(function()
+	if settingsOpen() then return end
 	if not lastState.canEvolve then
 		if lastState.nextAgeXp then
 			rejectAction(`NEED {math.max(0, math.ceil(lastState.nextAgeXp - (lastState.xp or 0)))} MORE XP TO EVOLVE`)
@@ -696,7 +708,7 @@ evolveBtn.Activated:Connect(function()
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then
+	if gameProcessed or settingsOpen() then
 		return
 	end
 	local key = input.KeyCode
