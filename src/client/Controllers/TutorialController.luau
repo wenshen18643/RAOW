@@ -181,7 +181,7 @@ local function setStep(step: number)
 		pointAt(nil)
 	elseif step == 3 then
 		hintLabel.Text = "Build a turret with your hotbar"
-		pointAt(GameUI.getSlotButton(4))
+		pointAt(GameUI.getSlotButton(5))
 	elseif step == 4 then
 		hintLabel.Text = "Evolve to the next Age when your XP is full"
 		pointAt(nil) -- points at the Evolve button once canEvolve is true
