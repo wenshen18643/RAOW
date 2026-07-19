@@ -817,12 +817,33 @@ if isLobby or isStudio then
 	end)
 
 	local lobbyPlayersSetUp: { [Player]: boolean } = {}
+	local lobbyRespawnPending: { [Player]: boolean } = {}
+	local function requestLobbyRespawn(player: Player)
+		if lobbyRespawnPending[player] or player.Parent ~= Players or sideFor(player) then return end
+		lobbyRespawnPending[player] = true
+		task.delay(1.5, function()
+			lobbyRespawnPending[player] = nil
+			if player.Parent == Players and not sideFor(player) then
+				player.CameraMode = Enum.CameraMode.Classic
+				player:LoadCharacter()
+			end
+		end)
+	end
+
 	local function setUpLobbyPlayer(player: Player)
 		if lobbyPlayersSetUp[player] then return end
 		lobbyPlayersSetUp[player] = true
 		loadPlayerProfile(player)
 		LobbyFlex.bindPlayer(player)
 		player.CameraMode = Enum.CameraMode.Classic
+		player.CharacterAdded:Connect(function(character)
+			local humanoid = character:WaitForChild("Humanoid", 5) :: Humanoid?
+			if humanoid then
+				humanoid.Died:Connect(function()
+					requestLobbyRespawn(player)
+				end)
+			end
+		end)
 		player:LoadCharacter()
 	end
 
@@ -834,8 +855,20 @@ if isLobby or isStudio then
 		setUpLobbyPlayer(player)
 	end
 
+	-- CharacterAutoLoads is disabled for match-controlled hero respawns. Recover
+	-- lobby players who walk off the island before Roblox destroys the model.
+	RunService.Heartbeat:Connect(function()
+		for player in lobbyPlayersSetUp do
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if root and root.Position.Y < -30 and not sideFor(player) then
+				requestLobbyRespawn(player)
+			end
+		end
+	end)
+
 	Players.PlayerRemoving:Connect(function(player)
 		lobbyPlayersSetUp[player] = nil
+		lobbyRespawnPending[player] = nil
 		local side = sideFor(player)
 		if side and currentMatch and currentMatch.status == "Active" then
 			currentMatch.status = "Ended"
