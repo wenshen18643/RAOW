@@ -24,6 +24,7 @@ type Request = {
 	committed: boolean,
 	originVisible: boolean,
 	watchdog: number,
+	failed: boolean,
 }
 
 local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -34,6 +35,8 @@ local statusLabel: TextLabel? = nil
 local retryButton: TextButton? = nil
 local backButton: TextButton? = nil
 local cancelButton: TextButton? = nil
+local RESPONSE_TIMEOUT = 15
+local COMMITTED_TIMEOUT = 35
 
 local function corner(parent: Instance, radius: number)
 	local value = Instance.new("UICorner")
@@ -155,9 +158,23 @@ local function showFailure(request: Request, message: string)
 	backButton.Visible = true
 end
 
+local function armWatchdog(request: Request, timeout: number)
+	request.watchdog += 1
+	local generation = request.watchdog
+	task.delay(timeout, function()
+		if active ~= request or request.watchdog ~= generation then return end
+		request.failed = true
+		request.watchdog += 1
+		if not request.committed then
+			Remotes.CancelPveStart:FireServer(request.id)
+		end
+		showFailure(request, Localization.t("pve_start.timeout"))
+	end)
+end
+
 local function sendRequest(request: Request)
 	active = request
-	request.watchdog += 1
+	request.failed = false
 	request.committed = false
 	setVisible(true)
 	statusLabel.Text = Localization.t("pve_start.checking")
@@ -167,6 +184,7 @@ local function sendRequest(request: Request)
 	retryButton.Visible = false
 	backButton.Visible = false
 	Remotes.StartPveLevel:FireServer(request.mode, request.level, request.id)
+	armWatchdog(request, RESPONSE_TIMEOUT)
 end
 
 local function retry()
@@ -180,6 +198,7 @@ local function retry()
 		committed = false,
 		originVisible = true,
 		watchdog = 0,
+		failed = false,
 	}
 	sendRequest(request)
 end
@@ -214,9 +233,9 @@ local function initialize()
 		if not request then return end
 		local requestId = data and data.requestId
 		if event ~= "MatchStart" and requestId ~= request.id then return end
+		if request.failed and event ~= "MatchStart" then return end
 
 		if event == "PveStartStatus" then
-			request.watchdog += 1
 			local stage = data and data.stage
 			if stage == "teleporting" or stage == "starting" then
 				if not request.committed then
@@ -228,10 +247,13 @@ local function initialize()
 					then Localization.t("pve_start.server_ready")
 					else Localization.t("pve_start.starting")
 				cancelButton.Visible = false
+				armWatchdog(request, COMMITTED_TIMEOUT)
 			else
 				statusLabel.Text = (data and data.message) or Localization.t("pve_start.preparing")
+				armWatchdog(request, RESPONSE_TIMEOUT)
 			end
 		elseif event == "PveStartError" then
+			request.failed = true
 			request.watchdog += 1
 			showFailure(request, (data and data.message) or Localization.t("pve_start.failed"))
 		elseif event == "PveStartCancelled" then
@@ -258,6 +280,7 @@ function PveStartFlow.request(mode: string, level: number, callbacks: Callbacks?
 		committed = false,
 		originVisible = true,
 		watchdog = 0,
+		failed = false,
 	}
 	sendRequest(request)
 	return true

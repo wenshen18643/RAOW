@@ -34,6 +34,7 @@ local catalogs: { [string]: Catalog } = {
 		["pve_start.starting"] = "Starting battle...",
 		["pve_start.preparing"] = "Preparing a battle server...",
 		["pve_start.failed"] = "Battle could not start. Retry or go back.",
+		["pve_start.timeout"] = "The battle server did not respond. Retry or go back.",
 
 		["portal.pvp_title"] = "RANKED 1v1",
 		["portal.campaign_title"] = "{difficulty} CAMPAIGN",
