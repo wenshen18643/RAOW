@@ -58,8 +58,14 @@ function PvELevels.difficultyForLevel(mode: string, level: number): DifficultyDe
 		return a + (b - a) * t
 	end
 
-	local baseHpMult = level <= 10 and (1 + 0.1 * (level - 1)) or (1.9 * 1.08 ^ (level - 10))
-	local baseDamageMult = level <= 10 and (1 + 0.1 * (level - 1)) or (1.9 * 1.08 ^ (level - 10))
+	-- Readable milestone curve: early stages teach upgrades quickly, midgame
+	-- grows steadily, and endless levels shift pressure toward smarter/faster AI
+	-- instead of turning every enemy into an opaque exponential health wall.
+	local earlySteps = math.min(level - 1, 9)
+	local midSteps = math.clamp(level - 10, 0, 20)
+	local endlessSteps = math.max(level - 30, 0)
+	local baseHpMult = math.min(1 + earlySteps * 0.10 + midSteps * 0.06 + endlessSteps * 0.025, 6)
+	local baseDamageMult = math.min(1 + earlySteps * 0.08 + midSteps * 0.045 + endlessSteps * 0.018, 4.5)
 
 	return {
 		hpMult = baseHpMult * modeDef.statMult,
@@ -73,6 +79,36 @@ function PvELevels.difficultyForLevel(mode: string, level: number): DifficultyDe
 		-- Economy/production pressure keeps growing past level 20 alongside stats.
 		aiIncomeMult = math.min(1.04 ^ (level - 1), 8) * modeDef.aiPressureMult,
 		aiTrainSpeedMult = math.min(1 + 0.04 * (level - 1), 2.5) * modeDef.aiPressureMult,
+	}
+end
+
+function PvELevels.recommendedPower(level: number): { totalUpgradeTiers: number, guidance: string }
+	level = math.max(math.floor(level), 1)
+	local tiers = math.clamp(math.floor((level - 1) / 2), 0, 28)
+	local guidance = if tiers == 0 then "No permanent upgrades required"
+		elseif tiers < 6 then "Invest in HP or Damage"
+		elseif tiers < 16 then "Balance HP, Damage, and Starting Gold"
+		else "Near-max upgrades; counter-units and turret timing matter most"
+	return { totalUpgradeTiers = tiers, guidance = guidance }
+end
+
+function PvELevels.stagePreview(mode: string, level: number): {
+	hpMult: number,
+	damageMult: number,
+	incomeMult: number,
+	trainSpeedMult: number,
+	recommendedTiers: number,
+	guidance: string,
+}
+	local diff = PvELevels.difficultyForLevel(mode, level)
+	local recommendation = PvELevels.recommendedPower(level)
+	return {
+		hpMult = diff.hpMult,
+		damageMult = diff.damageMult,
+		incomeMult = diff.aiIncomeMult,
+		trainSpeedMult = diff.aiTrainSpeedMult,
+		recommendedTiers = recommendation.totalUpgradeTiers,
+		guidance = recommendation.guidance,
 	}
 end
 

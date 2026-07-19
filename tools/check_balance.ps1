@@ -97,6 +97,13 @@ $campaignCap = Select-String -Path $pvePath -Pattern 'MAX_LEVEL\s*=' | Select-Ob
 if ($campaignCap) { throw "PvE campaign must remain endless rather than reintroducing a hard level cap." }
 $endlessScaling = Select-String -Path $pvePath -Pattern 'function PvELevels\.difficultyForLevel' | Select-Object -First 1
 if (-not $endlessScaling) { throw "Endless PvE difficulty scaling is missing." }
+$stagePreview = Select-String -Path $pvePath -Pattern 'function PvELevels\.stagePreview' | Select-Object -First 1
+$recommendedPower = Select-String -Path $pvePath -Pattern 'function PvELevels\.recommendedPower' | Select-Object -First 1
+if (-not $stagePreview -or -not $recommendedPower) { throw "PvE difficulty must expose stage multipliers and upgrade guidance." }
+$hpCeiling = Select-String -Path $pvePath -Pattern 'local baseHpMult = math\.min\(.+, (?<cap>[0-9.]+)\)' | Select-Object -First 1
+$damageCeiling = Select-String -Path $pvePath -Pattern 'local baseDamageMult = math\.min\(.+, (?<cap>[0-9.]+)\)' | Select-Object -First 1
+if (-not $hpCeiling -or [double]$hpCeiling.Matches[0].Groups['cap'].Value -gt 6) { throw "Endless enemy HP scaling lacks a fair ceiling." }
+if (-not $damageCeiling -or [double]$damageCeiling.Matches[0].Groups['cap'].Value -gt 4.5) { throw "Endless enemy damage scaling lacks a fair ceiling." }
 
 $bossRows = Select-String -Path $pvePath -Pattern '\{ unitId = "(?<id>age(?<age>\d+)_[^"]+)", hpScale = (?<hp>[0-9.]+), damageScale = (?<damage>[0-9.]+) \}' | ForEach-Object {
     $m = $_.Matches[0].Groups

@@ -594,6 +594,18 @@ function MainMenu.start()
 	end)
 	nextPageBtn.ZIndex = 11
 
+	local stagePreviewLabel = label(levelsPanel, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.695, 0),
+		Size = UDim2.new(0.9, 0, 0.045, 0),
+		Text = "",
+		TextScaled = false,
+		TextSize = 15,
+		TextWrapped = true,
+		TextColor3 = Color3.fromRGB(205, 205, 220),
+		ZIndex = 11,
+	})
+
 	local playNextBtn = button(levelsPanel, "PLAY NEXT — LEVEL 1", UDim2.fromScale(0.5, 0.845), UDim2.new(0.5, 0, 0.07, 0), Color3.fromRGB(150, 110, 40), function()
 		startLevel((currentPveProgress[selectedPveMode] or 0) + 1)
 	end)
@@ -612,6 +624,15 @@ function MainMenu.start()
 		nextPageBtn.Visible = true
 		playNextBtn.Text = `PLAY NEXT — LEVEL {prog + 1}`
 		playNextBtn.BackgroundColor3 = Color3.fromRGB(150, 110, 40)
+		local nextPreview = PvELevels.stagePreview(selectedPveMode, prog + 1)
+		stagePreviewLabel.Text = string.format(
+			"NEXT: Enemy HP x%.2f  |  Damage x%.2f  |  Income x%.2f  |  Recommended: %d upgrade tiers - %s",
+			nextPreview.hpMult,
+			nextPreview.damageMult,
+			nextPreview.incomeMult,
+			nextPreview.recommendedTiers,
+			nextPreview.guidance
+		)
 		for lvl = firstLevel, lastLevel do
 			local isBoss = PvELevels.isBossLevel(lvl)
 			local isLocked = lvl > prog + 1
@@ -631,20 +652,27 @@ function MainMenu.start()
 				Position = UDim2.new(0, 0, 0.05, 0), Size = UDim2.new(1, 0, 0.25, 0),
 				Text = `Lv {lvl}`, TextColor3 = isLocked and Color3.fromRGB(100,100,100) or Color3.new(1,1,1), ZIndex = 13
 			})
+			local preview = PvELevels.stagePreview(selectedPveMode, lvl)
+			label(btn, {
+				Position = UDim2.new(0.04, 0, 0.31, 0), Size = UDim2.new(0.92, 0, 0.2, 0),
+				Text = string.format("HP x%.1f  DMG x%.1f", preview.hpMult, preview.damageMult),
+				TextScaled = false, TextSize = 11,
+				TextColor3 = isLocked and Color3.fromRGB(90, 90, 95) or Color3.fromRGB(205, 215, 230), ZIndex = 13
+			})
 			if isBoss then
 				label(btn, {
-					Position = UDim2.new(0, 0, 0.35, 0), Size = UDim2.new(1, 0, 0.2, 0),
+					Position = UDim2.new(0, 0, 0.51, 0), Size = UDim2.new(1, 0, 0.17, 0),
 					Text = "BOSS", TextColor3 = isLocked and Color3.fromRGB(120,60,60) or Color3.new(1,0.8,0.8), ZIndex = 13
 				})
 			end
 			if isLocked then
 				label(btn, {
-					Position = UDim2.new(0, 0, 0.65, 0), Size = UDim2.new(1, 0, 0.2, 0),
+					Position = UDim2.new(0, 0, 0.73, 0), Size = UDim2.new(1, 0, 0.18, 0),
 					Text = "LOCKED", TextColor3 = Color3.fromRGB(150,50,50), ZIndex = 13
 				})
 			elseif isNext then
 				label(btn, {
-					Position = UDim2.new(0, 0, 0.65, 0), Size = UDim2.new(1, 0, 0.25, 0),
+					Position = UDim2.new(0, 0, 0.73, 0), Size = UDim2.new(1, 0, 0.18, 0),
 					Text = `+{PvELevels.coinsForClear(selectedPveMode, lvl, false)}c`, TextColor3 = Color3.fromRGB(240, 200, 80), ZIndex = 13
 				})
 			end
