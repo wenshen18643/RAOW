@@ -11,6 +11,7 @@ local values: { [string]: any } = {
 	mouseSensitivity = 0.35,
 	sfxVolume = 1,
 	uiVolume = 1,
+	musicVolume = 0.75,
 	reducedEffects = false,
 	showDamageNumbers = true,
 }

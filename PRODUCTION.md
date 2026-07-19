@@ -27,6 +27,20 @@ Omit `-SupporterPassId` to leave the optional pass disabled. Add `-WhatIf` to va
 
 Do not add paid random rewards, fake countdowns, restarting “limited” offers, or paid PvP power. If the catalog later adds randomized paid items, integrate `PolicyService` eligibility checks before displaying them.
 
+## Music and ambience
+
+Long-form audio slots live in `src/shared/Config/MusicConfig.luau`. They are
+intentionally empty in source control until the experience owner selects audio
+they own or that is shared with the experience. Set each required slot to a
+numeric `rbxassetid://` URI; do not copy catalog IDs without checking usage
+rights. The client crossfades lobby, match, victory, and defeat scenes, routes
+music and ambience separately, and changes the match mix across all five ages.
+
+After configuring tracks, test in a published staging place. Confirm every asset
+loads for a non-owner account, transitions do not overlap, age changes remain
+musically smooth, and the persisted Music Volume slider controls both long-form
+buses without muting combat or UI cues.
+
 ## Release gates
 
 - Run `powershell -ExecutionPolicy Bypass -File .\tools\check_balance.ps1`.
@@ -51,6 +65,6 @@ NPCs deploy across five lateral lanes, reacquire targets on staggered intervals,
 
 Current-age income keeps basic troops near a ten-second purchase cycle, heavies near 35â€“60 seconds, and turrets near one minute. Melee provides the best damage per gold, ranged sacrifices durability for spacing, and heavy armor/tank value counters ranged fire without matching melee damage efficiency. The final Super Soldier improves slot efficiency but is no more efficient per gold than a War Machine, so melee swarms remain its clean counter. Unit kills recycle only part of their cost, preventing runaway gold creation. Use **B** on keyboard or **L1** on gamepad to manage individual turret slots; replacing an obsolete turret includes its displayed 50% sell credit.
 
-Sensitivity, SFX/UI volume, reduced effects, and damage-number preferences persist with the player profile. Reduced effects disables camera shake, full-screen flashes, FOV kicks, excess particles, and decorative muzzle flashes while retaining combat tracers and melee telegraphs. Verify these options after rejoining on a staging server.
+Sensitivity, SFX/UI/music volume, reduced effects, and damage-number preferences persist with the player profile. Reduced effects disables camera shake, full-screen flashes, FOV kicks, excess particles, and decorative muzzle flashes while retaining combat tracers and melee telegraphs. Verify these options after rejoining on a staging server.
 
 Use the custom analytics funnel to compare `session_started` → `mode_selected` → `match_started` → match result. Segment `session_started` by the `returning`, `level`, and `pveLevel` fields. Monetization events are `daily_bonds_claimed`, `cosmetic_unlocked`, and `war_bonds_purchased`. Optimize unclear exits and low-value screens before increasing store exposure.

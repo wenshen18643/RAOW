@@ -7,8 +7,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
+local MusicConfig = require(ReplicatedStorage.Shared.Config.MusicConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local UnitAnimator = require(script.Parent.UnitAnimator)
 
@@ -22,6 +24,10 @@ local THROTTLE = 0.04 -- min seconds between plays of the same sound
 local MAX_DISTANCE = 220
 local MAX_POSITIONAL_SOUNDS = 18
 local activePositionalSounds = 0
+local activeLoops: { [string]: Sound } = {}
+local musicEqualizer: EqualizerSoundEffect? = nil
+local currentScene = ""
+local currentAge = 1
 
 local function getGroup(name: string): SoundGroup
 	local g = groups[name]
@@ -113,6 +119,82 @@ function Audio.getGroupVolume(group: string): number
 	return getGroup(group).Volume
 end
 
+-- Music and ambient beds share one player-facing volume while retaining
+-- separate SoundGroups for future routing and mix effects.
+function Audio.setMusicVolume(volume: number)
+	local clamped = math.clamp(volume, 0, 1)
+	getGroup("Music").Volume = clamped
+	getGroup("Ambience").Volume = clamped
+end
+
+local function fadeOut(sound: Sound)
+	TweenService:Create(sound, TweenInfo.new(MusicConfig.FADE_SECONDS), { Volume = 0 }):Play()
+	task.delay(MusicConfig.FADE_SECONDS + 0.1, function()
+		if sound.Parent then sound:Destroy() end
+	end)
+end
+
+local function transitionLoop(bus: "music" | "ambience", trackName: string, playbackSpeed: number)
+	local old = activeLoops[bus]
+	local track = MusicConfig.Tracks[trackName]
+	if track and track.id ~= "" and old
+		and old:GetAttribute("TrackName") == trackName then
+		old.PlaybackSpeed = playbackSpeed
+		return
+	end
+
+	if old then
+		activeLoops[bus] = nil
+		fadeOut(old)
+	end
+	if not track or track.id == "" then return end
+
+	local sound = Instance.new("Sound")
+	sound.Name = if bus == "music" then "CurrentMusic" else "CurrentAmbience"
+	sound:SetAttribute("TrackName", trackName)
+	sound.SoundId = track.id
+	sound.Volume = 0
+	sound.Looped = track.looped
+	sound.PlaybackSpeed = playbackSpeed
+	sound.SoundGroup = getGroup(if bus == "music" then "Music" else "Ambience")
+	sound.Parent = SoundService
+	activeLoops[bus] = sound
+	sound:Play()
+	TweenService:Create(sound, TweenInfo.new(MusicConfig.FADE_SECONDS), { Volume = track.volume }):Play()
+end
+
+local function applyAgeMix(age: number)
+	local mix = MusicConfig.AgeMix[math.clamp(age, 1, 5)] or MusicConfig.AgeMix[1]
+	if musicEqualizer then
+		TweenService:Create(musicEqualizer, TweenInfo.new(MusicConfig.FADE_SECONDS), {
+			LowGain = mix.lowGain,
+			MidGain = mix.midGain,
+			HighGain = mix.highGain,
+		}):Play()
+	end
+	local activeMusic = activeLoops.music
+	if activeMusic then
+		TweenService:Create(activeMusic, TweenInfo.new(MusicConfig.FADE_SECONDS), {
+			PlaybackSpeed = mix.playbackSpeed,
+		}):Play()
+	end
+end
+
+-- Scene transitions are idempotent and crossfade both long-form buses. Track
+-- slots may intentionally be empty until approved experience-owned audio ships.
+function Audio.setScene(scene: "lobby" | "match" | "victory" | "defeat", age: number?)
+	local nextAge = math.clamp(age or currentAge, 1, 5)
+	if scene == currentScene and (scene ~= "match" or nextAge == currentAge) then return end
+	currentScene = scene
+	currentAge = nextAge
+
+	local sceneDef = MusicConfig.Scenes[scene]
+	local mix = if scene == "match" then MusicConfig.AgeMix[nextAge] else MusicConfig.AgeMix[3]
+	transitionLoop("music", sceneDef.music, mix.playbackSpeed)
+	transitionLoop("ambience", sceneDef.ambience, 1)
+	applyAgeMix(if scene == "match" then nextAge else 3)
+end
+
 --------------------------------------------------------------------------------
 -- Event subscriptions
 --------------------------------------------------------------------------------
@@ -137,6 +219,14 @@ function Audio.start()
 	-- pre-create groups so the settings UI can read them immediately
 	getGroup("SFX")
 	getGroup("UI")
+	local musicGroup = getGroup("Music")
+	getGroup("Ambience")
+	musicEqualizer = Instance.new("EqualizerSoundEffect")
+	musicEqualizer.Name = "AgeIdentity"
+	musicEqualizer.Parent = musicGroup
+
+	local serverType = workspace:GetAttribute("ServerType")
+	Audio.setScene(if serverType == "match" then "match" else "lobby", 1)
 
 	-- unit animation hooks (fires exactly when the swing anim starts)
 	UnitAnimator.onUnitAttack = unitAttackSound
@@ -156,18 +246,30 @@ function Audio.start()
 	local player = Players.LocalPlayer
 	local localSide: string? = nil
 	Remotes.StateUpdate.OnClientEvent:Connect(function(state)
-		if typeof(state) == "table" then localSide = state.playerSide end
+		if typeof(state) == "table" then
+			localSide = state.playerSide
+			if state.status == "Active" and typeof(state.age) == "number" then
+				Audio.setScene("match", state.age)
+			end
+		end
 	end)
 	Remotes.MatchEvent.OnClientEvent:Connect(function(event: string, data: { [string]: any }?)
-		if event == "AgeUp" then
+		if event == "MatchStart" then
+			Audio.setScene("match", 1)
+		elseif event == "AgeUp" then
 			-- only fanfare for the local player's side
 			if data and data.side == localSide then
 				Audio.play("evolve")
+				Audio.setScene("match", data.age)
 			end
 		elseif event == "Victory" then
 			Audio.play("victory")
+			Audio.setScene("victory")
 		elseif event == "Defeat" then
 			Audio.play("defeat")
+			Audio.setScene("defeat")
+		elseif event == "ReturnToMenu" then
+			Audio.setScene("lobby")
 		end
 	end)
 end

@@ -10,6 +10,7 @@ local heroWeapons = require(shared.Config.HeroWeapons)
 local units = require(shared.Config.Units)
 local turrets = require(shared.Config.Turrets)
 local soundConfig = require(shared.Config.SoundConfig)
+local musicConfig = require(shared.Config.MusicConfig)
 local remotes = require(shared.Remotes)
 
 assert(pve.difficultyForLevel("Normal", 100).hpMult > pve.difficultyForLevel("Normal", 50).hpMult, "endless PvE difficulty must keep scaling")
@@ -55,6 +56,16 @@ assert(super.hp / super.cost <= 1.05 * (finalHeavy.hp / finalHeavy.cost), "super
 assert((super.damage / super.attackSpeed) / super.cost <= 1.05 * ((finalHeavy.damage / finalHeavy.attackSpeed) / finalHeavy.cost), "super-heavy damage efficiency is dominant")
 assert(heroWeapons[4].kind == "hitscan" and heroWeapons[5].kind == "hitscan", "late-age ranged weapons missing")
 for _, sound in soundConfig do assert(sound.group ~= "Music", "empty music group should not be exposed") end
+for name, track in musicConfig.Tracks do
+	assert(track.volume >= 0 and track.volume <= 1, `{name} long-form volume is valid`)
+	assert(track.id == "" or string.match(track.id, "^rbxassetid://%d+$") ~= nil,
+		`{name} uses an approved asset URI format`)
+end
+for _, scene in musicConfig.Scenes do
+	assert(scene.music == "" or musicConfig.Tracks[scene.music], "music scene references a known track")
+	assert(scene.ambience == "" or musicConfig.Tracks[scene.ambience], "ambience scene references a known track")
+end
+for age = 1, 5 do assert(musicConfig.AgeMix[age], `age {age} has a soundtrack identity mix`) end
 assert(remotes.ResultAction ~= nil, "explicit post-match actions are missing")
 assert(ReplicatedStorage.Remotes:FindFirstChild("LeaveMatch") == nil, "obsolete forced-return remote still exists")
 for _, cosmetic in monetization.Cosmetics do

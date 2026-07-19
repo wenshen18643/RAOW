@@ -823,18 +823,22 @@ function MainMenu.start()
 		ZIndex = 11,
 	})
 	local applyingSettings = false
-	local setSensitivity = slider(settingsPanel, "Mouse Sensitivity", UDim2.new(0.5, 0, 0.16, 0), Settings.get("mouseSensitivity"), function(v)
+	local setSensitivity = slider(settingsPanel, "Mouse Sensitivity", UDim2.new(0.5, 0, 0.13, 0), Settings.get("mouseSensitivity"), function(v)
 		-- 0..1 -> 0.2..2.5
 		UserInputService.MouseDeltaSensitivity = 0.2 + v * 2.3
 		if not applyingSettings then Settings.set("mouseSensitivity", v) end
 	end)
-	local setSfx = slider(settingsPanel, "SFX Volume", UDim2.new(0.5, 0, 0.31, 0), Settings.get("sfxVolume"), function(v)
+	local setSfx = slider(settingsPanel, "SFX Volume", UDim2.new(0.5, 0, 0.26, 0), Settings.get("sfxVolume"), function(v)
 		Audio.setGroupVolume("SFX", v)
 		if not applyingSettings then Settings.set("sfxVolume", v) end
 	end)
-	local setUi = slider(settingsPanel, "UI Volume", UDim2.new(0.5, 0, 0.46, 0), Settings.get("uiVolume"), function(v)
+	local setUi = slider(settingsPanel, "UI Volume", UDim2.new(0.5, 0, 0.39, 0), Settings.get("uiVolume"), function(v)
 		Audio.setGroupVolume("UI", v)
 		if not applyingSettings then Settings.set("uiVolume", v) end
+	end)
+	local setMusic = slider(settingsPanel, "Music Volume", UDim2.new(0.5, 0, 0.52, 0), Settings.get("musicVolume"), function(v)
+		Audio.setMusicVolume(v)
+		if not applyingSettings then Settings.set("musicVolume", v) end
 	end)
 	local reducedBtn: TextButton
 	local numbersBtn: TextButton
@@ -844,12 +848,12 @@ function MainMenu.start()
 		numbersBtn.Text = Settings.get("showDamageNumbers") and "DAMAGE NUMBERS: ON" or "DAMAGE NUMBERS: OFF"
 		numbersBtn.BackgroundColor3 = Settings.get("showDamageNumbers") and Color3.fromRGB(55, 120, 75) or Color3.fromRGB(70, 70, 82)
 	end
-	reducedBtn = button(settingsPanel, "", UDim2.fromScale(0.5, 0.64), UDim2.new(0.55, 0, 0.07, 0), Color3.fromRGB(70, 70, 82), function()
+	reducedBtn = button(settingsPanel, "", UDim2.fromScale(0.5, 0.69), UDim2.new(0.55, 0, 0.07, 0), Color3.fromRGB(70, 70, 82), function()
 		Settings.set("reducedEffects", not Settings.get("reducedEffects"))
 		refreshComfortButtons()
 	end)
 	reducedBtn.ZIndex = 11
-	numbersBtn = button(settingsPanel, "", UDim2.fromScale(0.5, 0.75), UDim2.new(0.55, 0, 0.07, 0), Color3.fromRGB(70, 70, 82), function()
+	numbersBtn = button(settingsPanel, "", UDim2.fromScale(0.5, 0.79), UDim2.new(0.55, 0, 0.07, 0), Color3.fromRGB(70, 70, 82), function()
 		Settings.set("showDamageNumbers", not Settings.get("showDamageNumbers"))
 		refreshComfortButtons()
 	end)
@@ -1137,6 +1141,7 @@ function MainMenu.start()
 				setSensitivity(Settings.get("mouseSensitivity"))
 				setSfx(Settings.get("sfxVolume"))
 				setUi(Settings.get("uiVolume"))
+				setMusic(Settings.get("musicVolume"))
 				applyingSettings = false
 				refreshComfortButtons()
 			end

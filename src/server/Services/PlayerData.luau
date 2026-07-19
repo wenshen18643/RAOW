@@ -44,6 +44,7 @@ export type PlayerProfile = {
 		mouseSensitivity: number,
 		sfxVolume: number,
 		uiVolume: number,
+		musicVolume: number,
 		reducedEffects: boolean,
 		showDamageNumbers: boolean,
 	},
@@ -52,7 +53,7 @@ export type PlayerProfile = {
 -- Returns a fresh default profile.
 local function defaultProfile(): PlayerProfile
 	return {
-		schemaVersion = 8,
+		schemaVersion = 9,
 		wins = 0,
 		losses = 0,
 		totalKills = 0,
@@ -76,6 +77,7 @@ local function defaultProfile(): PlayerProfile
 			mouseSensitivity = 0.35,
 			sfxVolume = 1,
 			uiVolume = 1,
+			musicVolume = 0.75,
 			reducedEffects = false,
 			showDamageNumbers = true,
 		},
@@ -195,6 +197,7 @@ function PlayerData.load(player: Player): boolean
 			profile.settings.mouseSensitivity = math.clamp(tonumber(result.settings.mouseSensitivity) or 0.35, 0, 1)
 			profile.settings.sfxVolume = math.clamp(tonumber(result.settings.sfxVolume) or 1, 0, 1)
 			profile.settings.uiVolume = math.clamp(tonumber(result.settings.uiVolume) or 1, 0, 1)
+			profile.settings.musicVolume = math.clamp(tonumber(result.settings.musicVolume) or 0.75, 0, 1)
 			profile.settings.reducedEffects = result.settings.reducedEffects == true
 			profile.settings.showDamageNumbers = result.settings.showDamageNumbers ~= false
 		end
@@ -423,7 +426,7 @@ end
 function PlayerData.updateSetting(player: Player, key: string, value: any): boolean
 	local profile = cache[player]
 	if not profile then return false end
-	if key == "mouseSensitivity" or key == "sfxVolume" or key == "uiVolume" then
+	if key == "mouseSensitivity" or key == "sfxVolume" or key == "uiVolume" or key == "musicVolume" then
 		if typeof(value) ~= "number" or value ~= value then return false end
 		(profile.settings :: any)[key] = math.clamp(value, 0, 1)
 		return true

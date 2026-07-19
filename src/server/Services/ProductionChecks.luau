@@ -14,6 +14,7 @@ local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 local MonetizationConfig = require(ReplicatedStorage.Shared.Config.MonetizationConfig)
 local ProgressionConfig = require(ReplicatedStorage.Shared.Config.ProgressionConfig)
 local SoundConfig = require(ReplicatedStorage.Shared.Config.SoundConfig)
+local MusicConfig = require(ReplicatedStorage.Shared.Config.MusicConfig)
 
 local ProductionChecks = {}
 
@@ -128,6 +129,25 @@ function ProductionChecks.run()
 		check(sound.volume >= 0 and sound.volume <= 1, `{soundName} volume is outside 0..1`)
 		check(sound.group == "SFX" or sound.group == "UI", `{soundName} uses an unsupported or empty sound group`)
 		check(string.sub(sound.id, 1, 11) == "rbxasset://", `{soundName} has an invalid sound asset URI`)
+	end
+	for trackName, track in MusicConfig.Tracks do
+		check(track.volume >= 0 and track.volume <= 1, `{trackName} music volume is outside 0..1`)
+		check(track.id == "" or string.match(track.id, "^rbxassetid://%d+$") ~= nil,
+			`{trackName} must use an approved numeric rbxassetid URI or remain empty`)
+	end
+	for sceneName, scene in MusicConfig.Scenes do
+		for _, trackName in { scene.music, scene.ambience } do
+			check(trackName == "" or MusicConfig.Tracks[trackName] ~= nil,
+				`{sceneName} references unknown long-form track {trackName}`)
+		end
+	end
+	for age = 1, 5 do
+		local mix = MusicConfig.AgeMix[age]
+		check(mix ~= nil, `missing music identity mix for age {age}`)
+		if mix then
+			check(mix.playbackSpeed >= 0.5 and mix.playbackSpeed <= 2,
+				`age {age} music playback speed is unsafe`)
+		end
 	end
 	print(`[ProductionChecks] passed; all opening paths require {allPathsOpeningCost}g vs {GameConfig.STARTING_GOLD}g starting gold`)
 end
