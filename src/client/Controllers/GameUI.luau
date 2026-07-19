@@ -20,6 +20,7 @@ local Accessibility = require(script.Parent.Accessibility)
 local Settings = require(script.Parent.Settings)
 local UISelection = require(script.Parent.UISelection)
 local InputPrompts = require(script.Parent.InputPrompts)
+local Localization = require(ReplicatedStorage.Shared.Localization)
 
 local GameUI = {}
 local lastState: { [string]: any } = {}
@@ -39,6 +40,7 @@ local function label(parent: Instance, props: { [string]: any }): TextLabel
 	l.Font = FONT
 	l.TextColor3 = Color3.new(1, 1, 1)
 	l.TextScaled = true
+	l.TextWrapped = true
 	for k, v in props do
 		(l :: any)[k] = v
 	end
@@ -131,9 +133,9 @@ end
 
 -- Base HP bars
 local myBaseBg, myBaseFill = bar(gui, UDim2.new(0.02, 0, 0.03, 0), UDim2.new(0.25, 0, 0.03, 0), Color3.fromRGB(70, 140, 230))
-local myBaseLabel = label(myBaseBg, { Size = UDim2.fromScale(1, 1), Text = "YOUR BASE", ZIndex = 3, TextTransparency = 0.15 })
+local myBaseLabel = label(myBaseBg, { Size = UDim2.fromScale(1, 1), Text = Localization.t("hud.your_base"), ZIndex = 3, TextTransparency = 0.15 })
 local enBaseBg, enBaseFill = bar(gui, UDim2.new(0.73, 0, 0.03, 0), UDim2.new(0.25, 0, 0.03, 0), Color3.fromRGB(220, 80, 70))
-local enBaseLabel = label(enBaseBg, { Size = UDim2.fromScale(1, 1), Text = "ENEMY BASE", ZIndex = 3, TextTransparency = 0.15 })
+local enBaseLabel = label(enBaseBg, { Size = UDim2.fromScale(1, 1), Text = Localization.t("hud.enemy_base"), ZIndex = 3, TextTransparency = 0.15 })
 
 -- Dedicated hero health is kept separate from base health so first-person
 -- players never have to rely on the platform CoreGui during combat.
@@ -163,12 +165,12 @@ local objectiveCorner = Instance.new("UICorner")
 objectiveCorner.CornerRadius = UDim.new(0, 8)
 objectiveCorner.Parent = objectiveFrame
 local objectiveTitle = label(objectiveFrame, {
-	Size = UDim2.fromScale(1, 0.46), Text = "GOAL: DESTROY THE ENEMY BASE",
+	Size = UDim2.fromScale(1, 0.46), Text = Localization.t("hud.goal_destroy"),
 	TextColor3 = Color3.fromRGB(255, 125, 110), ZIndex = 3,
 })
 local evolveHint = label(objectiveFrame, {
 	Position = UDim2.fromScale(0.02, 0.47), Size = UDim2.fromScale(0.96, 0.42),
-	Text = "Kills grant XP • Evolve to unlock stronger armies", TextColor3 = Color3.fromRGB(205, 205, 220), ZIndex = 3,
+	Text = Localization.t("hud.evolve_hint"), TextColor3 = Color3.fromRGB(205, 205, 220), ZIndex = 3,
 })
 
 -- Show the goal banner for 10 seconds, then hide it.
@@ -188,7 +190,7 @@ local diffLabel = label(gui, {
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(0.98, 0, 0.02, 0),
 	Size = UDim2.new(0.15, 0, 0.03, 0),
-	Text = "Mode: 1v1 PvP",
+	Text = Localization.t("hud.mode_pvp"),
 	TextXAlignment = Enum.TextXAlignment.Right,
 	TextColor3 = Color3.fromRGB(150, 200, 150),
 })
@@ -208,7 +210,8 @@ evolveBtn.Position = UDim2.new(0.5, 0, 0.09, 0)
 evolveBtn.Size = UDim2.new(0.12, 0, 0.035, 0)
 evolveBtn.Font = FONT
 evolveBtn.TextScaled = true
-evolveBtn.Text = "EVOLVE [Q]"
+evolveBtn.Text = Localization.t("hud.evolve")
+evolveBtn.TextWrapped = true
 evolveBtn.TextColor3 = Color3.new(1, 1, 1)
 evolveBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 evolveBtn.Visible = false
@@ -282,7 +285,8 @@ upgradesToggle.BackgroundColor3 = Color3.fromRGB(40, 40, 80)
 upgradesToggle.TextColor3 = Color3.new(1, 1, 1)
 upgradesToggle.Font = FONT
 upgradesToggle.TextScaled = true
-upgradesToggle.Text = "UPGRADES [E]"
+upgradesToggle.Text = Localization.t("hud.upgrades")
+upgradesToggle.TextWrapped = true
 upgradesToggle.Parent = gui
 local ugCorner = Instance.new("UICorner")
 ugCorner.CornerRadius = UDim.new(0, 6)
@@ -316,7 +320,8 @@ guideButton.BackgroundColor3 = Color3.fromRGB(65, 52, 92)
 guideButton.TextColor3 = Color3.new(1, 1, 1)
 guideButton.Font = FONT
 guideButton.TextScaled = true
-guideButton.Text = "COMBO GUIDE [G]"
+guideButton.Text = Localization.t("hud.combo_guide")
+guideButton.TextWrapped = true
 guideButton.Parent = gui
 local guideButtonCorner = Instance.new("UICorner")
 guideButtonCorner.CornerRadius = UDim.new(0, 7)
@@ -342,16 +347,16 @@ guideStroke.Parent = guidePanel
 
 label(guidePanel, {
 	Position = UDim2.fromScale(0.06, 0.04), Size = UDim2.fromScale(0.88, 0.09),
-	Text = "ARMY COMBINATION GUIDE", ZIndex = 21,
+	Text = Localization.t("hud.guide_title"), ZIndex = 21,
 })
 label(guidePanel, {
 	Position = UDim2.fromScale(0.07, 0.13), Size = UDim2.fromScale(0.86, 0.08),
-	Text = "The first formation you complete locks your doctrine for this battle. Choose carefully.",
+	Text = Localization.t("hud.guide_description"),
 	TextWrapped = true, TextColor3 = Color3.fromRGB(195, 195, 210), ZIndex = 21,
 })
 local guideStatus = label(guidePanel, {
 	Position = UDim2.fromScale(0.12, 0.86), Size = UDim2.fromScale(0.76, 0.07),
-	Text = "Current doctrine: Not chosen", TextColor3 = Color3.fromRGB(245, 210, 110), ZIndex = 21,
+	Text = Localization.t("hud.doctrine_none"), TextColor3 = Color3.fromRGB(245, 210, 110), ZIndex = 21,
 })
 local guideProgressLabels: { [string]: TextLabel } = {}
 for i, doctrine in Synergies.list do
@@ -390,7 +395,8 @@ turretButton.BackgroundColor3 = Color3.fromRGB(52, 72, 92)
 turretButton.TextColor3 = Color3.new(1, 1, 1)
 turretButton.Font = FONT
 turretButton.TextScaled = true
-turretButton.Text = "TURRETS [B]"
+turretButton.Text = Localization.t("hud.turrets")
+turretButton.TextWrapped = true
 turretButton.Parent = gui
 local turretButtonCorner = Instance.new("UICorner")
 turretButtonCorner.CornerRadius = UDim.new(0, 7)
@@ -416,11 +422,11 @@ turretStroke.Parent = turretPanel
 
 label(turretPanel, {
 	Position = UDim2.fromScale(0.08, 0.04), Size = UDim2.fromScale(0.84, 0.09),
-	Text = "TURRET MANAGER", TextColor3 = Color3.fromRGB(140, 205, 245), ZIndex = 21,
+	Text = Localization.t("hud.turret_manager"), TextColor3 = Color3.fromRGB(140, 205, 245), ZIndex = 21,
 })
 label(turretPanel, {
 	Position = UDim2.fromScale(0.08, 0.12), Size = UDim2.fromScale(0.84, 0.055),
-	Text = "Upgrades automatically include the old turret's 50% sell credit.",
+	Text = Localization.t("hud.turret_credit"),
 	TextColor3 = Color3.fromRGB(185, 195, 210), ZIndex = 21,
 })
 
@@ -462,9 +468,9 @@ for slot = 1, GameConfig.TURRET_SLOTS do
 	rowCorner.Parent = row
 	local status = label(row, {
 		Position = UDim2.fromScale(0.03, 0.12), Size = UDim2.fromScale(0.42, 0.76),
-		Text = `SLOT {slot} • EMPTY`, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22,
+		Text = Localization.t("hud.slot_empty", { slot = slot }), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22,
 	})
-	local primary = turretActionButton(row, "BUILD", UDim2.fromScale(0.64, 0.5), UDim2.fromScale(0.3, 0.68), Color3.fromRGB(55, 115, 80), function()
+	local primary = turretActionButton(row, Localization.t("common.build"), UDim2.fromScale(0.64, 0.5), UDim2.fromScale(0.3, 0.68), Color3.fromRGB(55, 115, 80), function()
 		local age = lastState.age or 1
 		local info = (lastState.turrets or {})[slot]
 		local current = Turrets[age]
@@ -472,13 +478,15 @@ for slot = 1, GameConfig.TURRET_SLOTS do
 		local cost = math.max(0, current.cost - credit)
 		if typeof(info) == "table" and (info.age or age) >= age then return end
 		if (lastState.gold or 0) < cost then
-			showMessage(`NEED {cost - math.floor(lastState.gold or 0)} MORE GOLD`, Color3.fromRGB(255, 150, 120), 1.5)
+			showMessage(Localization.t("hud.need_gold", {
+				amount = cost - math.floor(lastState.gold or 0),
+			}), Color3.fromRGB(255, 150, 120), 1.5)
 			return
 		end
 		Audio.play("buy")
 		Remotes.BuildTurret:FireServer(slot)
 	end)
-	local sell = turretActionButton(row, "SELL", UDim2.fromScale(0.88, 0.5), UDim2.fromScale(0.16, 0.68), Color3.fromRGB(115, 70, 55), function()
+	local sell = turretActionButton(row, Localization.t("common.sell"), UDim2.fromScale(0.88, 0.5), UDim2.fromScale(0.16, 0.68), Color3.fromRGB(115, 70, 55), function()
 		if typeof((lastState.turrets or {})[slot]) ~= "table" then return end
 		Audio.play("click")
 		Remotes.SellTurret:FireServer(slot)
@@ -486,7 +494,7 @@ for slot = 1, GameConfig.TURRET_SLOTS do
 	table.insert(turretRows, { status = status, primary = primary, sell = sell })
 end
 
-local closeTurrets = turretActionButton(turretPanel, "CLOSE", UDim2.fromScale(0.5, 0.91), UDim2.fromScale(0.22, 0.07), Color3.fromRGB(60, 65, 75), function()
+local closeTurrets = turretActionButton(turretPanel, Localization.t("common.close"), UDim2.fromScale(0.5, 0.91), UDim2.fromScale(0.22, 0.07), Color3.fromRGB(60, 65, 75), function()
 	turretPanel.Visible = false
 end)
 closeTurrets.ZIndex = 22
@@ -573,7 +581,8 @@ cancelQueueButton.BackgroundColor3 = Color3.fromRGB(125, 55, 55)
 cancelQueueButton.TextColor3 = Color3.new(1, 1, 1)
 cancelQueueButton.Font = FONT
 cancelQueueButton.TextScaled = true
-cancelQueueButton.Text = "CANCEL MATCHMAKING"
+cancelQueueButton.Text = Localization.t("hud.cancel_matchmaking")
+cancelQueueButton.TextWrapped = true
 cancelQueueButton.Visible = false
 cancelQueueButton.Parent = gui
 local cancelQueueCorner = Instance.new("UICorner")
@@ -625,9 +634,9 @@ for i = 1, 6 do
 end
 
 local function refreshInputPrompts()
-	upgradesToggle.Text = InputPrompts.withPrompt("UPGRADES", "upgrades")
-	guideButton.Text = InputPrompts.withPrompt("COMBO GUIDE", "guide")
-	turretButton.Text = InputPrompts.withPrompt("TURRETS", "turrets")
+	upgradesToggle.Text = InputPrompts.withPrompt(Localization.t("hud.upgrades"), "upgrades")
+	guideButton.Text = InputPrompts.withPrompt(Localization.t("hud.combo_guide"), "guide")
+	turretButton.Text = InputPrompts.withPrompt(Localization.t("hud.turrets"), "turrets")
 
 	for index, slot in slots do
 		local prompt = InputPrompts.get(`slot{index}`)
@@ -642,10 +651,12 @@ local function refreshInputPrompts()
 
 	local age = lastState.age
 	if age and lastState.nextAgeXp ~= nil then
-		local text = if lastState.canEvolve then `EVOLVE TO AGE {age + 1}` else `AGE {age + 1} LOCKED`
+		local text = if lastState.canEvolve
+			then Localization.t("hud.evolve_to_age", { age = age + 1 })
+			else Localization.t("hud.age_locked", { age = age + 1 })
 		evolveBtn.Text = InputPrompts.withPrompt(text, "evolve")
 	else
-		evolveBtn.Text = InputPrompts.withPrompt("EVOLVE", "evolve")
+		evolveBtn.Text = InputPrompts.withPrompt(Localization.t("hud.evolve"), "evolve")
 	end
 end
 
@@ -704,10 +715,10 @@ local function slotAction(i: number)
 		local def = Units.byAge[age][i]
 		if def then
 			if (lastState.queueCount or 0) >= (lastState.queueCap or 10) then
-				rejectAction("UNIT QUEUE FULL")
+				rejectAction(Localization.t("hud.queue_full"))
 				return
 			elseif (lastState.gold or 0) < def.cost then
-				rejectAction(`NEED {def.cost - math.floor(lastState.gold or 0)} MORE GOLD`)
+				rejectAction(Localization.t("hud.need_gold", { amount = def.cost - math.floor(lastState.gold or 0) }))
 				return
 			end
 			Audio.play("click")
@@ -716,7 +727,7 @@ local function slotAction(i: number)
 	elseif i == 5 then
 		local tdef = Turrets[age]
 		if (lastState.gold or 0) < tdef.cost then
-			rejectAction(`NEED {tdef.cost - math.floor(lastState.gold or 0)} MORE GOLD`)
+			rejectAction(Localization.t("hud.need_gold", { amount = tdef.cost - math.floor(lastState.gold or 0) }))
 			return
 		end
 		-- build in first empty slot
@@ -728,10 +739,10 @@ local function slotAction(i: number)
 				return
 			end
 		end
-		rejectAction(InputPrompts.withPrompt("ALL SLOTS FULL • OPEN TURRETS TO UPGRADE OR SELL", "turrets"))
+		rejectAction(InputPrompts.withPrompt(Localization.t("hud.all_turrets_full"), "turrets"))
 	elseif i == 6 then
 		if (lastState.specialCd or 0) > 0 then
-			rejectAction(`SPECIAL READY IN {math.ceil(lastState.specialCd)}s`)
+			rejectAction(Localization.t("hud.special_cooldown", { seconds = math.ceil(lastState.specialCd) }))
 			return
 		end
 		Audio.play("click")
@@ -748,7 +759,9 @@ evolveBtn.Activated:Connect(function()
 	if settingsOpen() then return end
 	if not lastState.canEvolve then
 		if lastState.nextAgeXp then
-			rejectAction(`NEED {math.max(0, math.ceil(lastState.nextAgeXp - (lastState.xp or 0)))} MORE XP TO EVOLVE`)
+			rejectAction(Localization.t("hud.need_xp", {
+				amount = math.max(0, math.ceil(lastState.nextAgeXp - (lastState.xp or 0))),
+			}))
 		end
 		return
 	end
@@ -798,7 +811,9 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			Audio.play("buy")
 			Remotes.Evolve:FireServer()
 		elseif lastState.nextAgeXp then
-			rejectAction(`NEED {math.max(0, math.ceil(lastState.nextAgeXp - (lastState.xp or 0)))} MORE XP TO EVOLVE`)
+			rejectAction(Localization.t("hud.need_xp", {
+				amount = math.max(0, math.ceil(lastState.nextAgeXp - (lastState.xp or 0))),
+			}))
 		end
 	end
 end)
@@ -808,12 +823,14 @@ local function refresh(state: { [string]: any })
 	lastState = state
 	local age = state.age :: number
 	local gold = state.gold :: number
-	guideStatus.Text = state.doctrine and `Current doctrine: {state.doctrine} (LOCKED)` or "Current doctrine: Not chosen"
+	guideStatus.Text = state.doctrine and Localization.t("hud.doctrine_locked", { doctrine = state.doctrine })
+		or Localization.t("hud.doctrine_none")
 	local roleCounts = state.roleCounts or {}
 	for _, doctrine in Synergies.list do
 		local progress = guideProgressLabels[doctrine.id]
 		if state.doctrine then
-			progress.Text = state.doctrine == doctrine.id and "ACTIVE FOR THIS BATTLE" or "LOCKED OUT THIS BATTLE"
+			progress.Text = state.doctrine == doctrine.id and Localization.t("hud.doctrine_active")
+				or Localization.t("hud.doctrine_unavailable")
 			progress.TextColor3 = state.doctrine == doctrine.id and doctrine.color or Color3.fromRGB(125, 125, 135)
 		else
 			local parts = {}
@@ -824,7 +841,7 @@ local function refresh(state: { [string]: any })
 					table.insert(parts, `{displayRole} {math.min(roleCounts[role] or 0, required)}/{required}`)
 				end
 			end
-			progress.Text = `Progress: {table.concat(parts, " • ")}`
+			progress.Text = Localization.t("hud.progress", { progress = table.concat(parts, " • ") })
 			progress.TextColor3 = doctrine.color
 		end
 	end
@@ -833,31 +850,33 @@ local function refresh(state: { [string]: any })
 	for slot, row in turretRows do
 		local info = (state.turrets or {})[slot]
 		if typeof(info) == "table" then
-			row.status.Text = `SLOT {slot} • {string.upper(info.name or "TURRET")}  (AGE {info.age or age})`
+			row.status.Text = Localization.t("hud.slot_turret", {
+				slot = slot, name = string.upper(info.name or "TURRET"), age = info.age or age,
+			})
 			row.sell.Visible = true
-			row.sell.Text = `SELL +{info.sellValue or 0}`
+			row.sell.Text = Localization.t("hud.sell_value", { value = info.sellValue or 0 })
 			if (info.age or age) < age then
 				local upgradeCost = math.max(0, currentTurret.cost - (info.sellValue or 0))
-				row.primary.Text = `UPGRADE {upgradeCost}g`
+				row.primary.Text = Localization.t("hud.upgrade_cost", { cost = upgradeCost })
 				row.primary.Active = gold >= upgradeCost
 				row.primary.BackgroundColor3 = gold >= upgradeCost and Color3.fromRGB(55, 115, 80) or Color3.fromRGB(75, 55, 55)
 			else
-				row.primary.Text = "CURRENT"
+				row.primary.Text = Localization.t("common.current")
 				row.primary.Active = false
 				row.primary.BackgroundColor3 = Color3.fromRGB(55, 65, 70)
 			end
 		else
-			row.status.Text = `SLOT {slot} • EMPTY`
+			row.status.Text = Localization.t("hud.slot_empty", { slot = slot })
 			row.sell.Visible = false
-			row.primary.Text = `BUILD {currentTurret.cost}g`
+			row.primary.Text = Localization.t("hud.build_cost", { cost = currentTurret.cost })
 			row.primary.Active = gold >= currentTurret.cost
 			row.primary.BackgroundColor3 = gold >= currentTurret.cost and Color3.fromRGB(55, 115, 80) or Color3.fromRGB(75, 55, 55)
 		end
 	end
 
 	goldLabel.Text = `{math.floor(gold)} g  (+{string.format("%.1f", state.incomeRate or 0)}/s)`
-	countLabel.Text = `units {state.unitCount}/20  queue {state.queueCount}`
-	ageLabel.Text = `AGE {age} / {#Ages}  •  {string.upper(state.ageName)}`
+	countLabel.Text = Localization.t("hud.army_count", { units = state.unitCount, queue = state.queueCount })
+	ageLabel.Text = Localization.t("hud.age", { age = age, total = #Ages, name = string.upper(state.ageName) })
 	ageLabel.TextColor3 = Ages[age].color:Lerp(Color3.new(1, 1, 1), 0.5)
 	local elapsed = math.max(0, state.matchElapsed or 0)
 	local mins = math.floor(elapsed / 60)
@@ -909,8 +928,14 @@ local function refresh(state: { [string]: any })
 	end
 
 	if objectiveFrame.Visible and state.stageObjective then
-		objectiveTitle.Text = `GOAL: {state.stageObjective} • {string.upper(state.stageName or "")}`
-		evolveHint.Text = `{state.stageObjectiveDescription or ""} • {state.stageModifier or ""}: {state.stageModifierDescription or ""}`
+		objectiveTitle.Text = Localization.t("hud.goal_stage", {
+			objective = state.stageObjective, stage = string.upper(state.stageName or ""),
+		})
+		evolveHint.Text = Localization.t("hud.stage_detail", {
+			description = state.stageObjectiveDescription or "",
+			modifier = state.stageModifier or "",
+			modifierDescription = state.stageModifierDescription or "",
+		})
 	end
 
 	evolveBtn.Visible = state.nextAgeXp ~= nil
@@ -936,8 +961,12 @@ local function refresh(state: { [string]: any })
 
 	myBaseFill.Size = UDim2.fromScale(math.clamp(state.baseHpSelf / state.baseMaxHpSelf, 0, 1), 1)
 	enBaseFill.Size = UDim2.fromScale(math.clamp(state.baseHpEnemy / state.baseMaxHpEnemy, 0, 1), 1)
-	myBaseLabel.Text = `YOUR BASE  •  {math.ceil(state.baseHpSelf)} / {math.ceil(state.baseMaxHpSelf)}`
-	enBaseLabel.Text = `ENEMY BASE  •  {math.ceil(state.baseHpEnemy)} / {math.ceil(state.baseMaxHpEnemy)}`
+	myBaseLabel.Text = Localization.t("hud.base_health", {
+		label = Localization.t("hud.your_base"), health = math.ceil(state.baseHpSelf), maximum = math.ceil(state.baseMaxHpSelf),
+	})
+	enBaseLabel.Text = Localization.t("hud.base_health", {
+		label = Localization.t("hud.enemy_base"), health = math.ceil(state.baseHpEnemy), maximum = math.ceil(state.baseMaxHpEnemy),
+	})
 
 	-- hotbar slots 1-4: units of current age
 	for i = 1, 4 do
@@ -1047,7 +1076,7 @@ local function baseAlarm()
 	end
 	lastBaseAlarm = now
 	Audio.play("baseAlarm")
-	Accessibility.caption("YOUR BASE IS UNDER ATTACK", 2.2)
+	Accessibility.caption(Localization.t("caption.base_under_attack"), 2.2)
 	local orig = myBaseFill.BackgroundColor3
 	myBaseFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
 	TweenService:Create(myBaseFill, TweenInfo.new(0.35), { BackgroundColor3 = orig }):Play()
@@ -1087,67 +1116,80 @@ function GameUI.start()
 		if event == "MatchStart" then
 			setQueueMode(false)
 			if data and data.stageObjective then
-				objectiveTitle.Text = `GOAL: {data.stageObjective} • {string.upper(data.stageName or "")}`
-				evolveHint.Text = `{data.stageObjectiveDescription or ""} • {data.stageModifier or ""}: {data.stageModifierDescription or ""}`
+				objectiveTitle.Text = Localization.t("hud.goal_stage", {
+					objective = data.stageObjective,
+					stage = string.upper(data.stageName or ""),
+				})
+				evolveHint.Text = Localization.t("hud.stage_detail", {
+					description = data.stageObjectiveDescription or "",
+					modifier = data.stageModifier or "",
+					modifierDescription = data.stageModifierDescription or "",
+				})
 			else
-				objectiveTitle.Text = "GOAL: DESTROY THE ENEMY BASE"
-				evolveHint.Text = "Kills grant XP • Evolve to unlock stronger armies"
+				objectiveTitle.Text = Localization.t("hud.goal_destroy")
+				evolveHint.Text = Localization.t("hud.evolve_hint")
 			end
 			showObjective()
 			local mode = data and data.mode
 			if mode == "PvP" then
-				showMessage("1v1 BATTLE START", Color3.new(1, 1, 1), 2.5)
+				showMessage(Localization.t("hud.battle_start_pvp"), Color3.new(1, 1, 1), 2.5)
 			else
 				local diffText = (data and data.difficulty) and data.difficulty:upper() or "NORMAL"
-				showMessage(`BATTLE START — {diffText} MODE`, Color3.new(1, 1, 1), 2.5)
+				showMessage(Localization.t("hud.battle_start_pve", { difficulty = diffText }), Color3.new(1, 1, 1), 2.5)
 			end
 		elseif event == "AgeUp" and data then
 			if data.side == lastState.playerSide then
-				showMessage(`ADVANCED TO {Ages[data.age].name:upper()}!`, Ages[data.age].color:Lerp(Color3.new(1, 1, 1), 0.4), 3)
+				showMessage(Localization.t("hud.advanced_age", {
+					age = Ages[data.age].name:upper(),
+				}), Ages[data.age].color:Lerp(Color3.new(1, 1, 1), 0.4), 3)
 			else
-				showMessage("Enemy advanced an age!", Color3.fromRGB(255, 160, 140), 3)
+				showMessage(Localization.t("hud.enemy_advanced"), Color3.fromRGB(255, 160, 140), 3)
 			end
 		elseif event == "HeroRespawn" and data then
 			task.spawn(function()
 				for t = data.delay, 1, -1 do
-					showMessage(`Respawn in {t}...`, Color3.fromRGB(220, 220, 220))
+					showMessage(Localization.t("hud.respawn", { seconds = t }), Color3.fromRGB(220, 220, 220))
 					task.wait(1)
 				end
 				msgLabel.Text = ""
 			end)
 		elseif event == "SpecialFired" and data then
 			if data.side ~= lastState.playerSide then
-				showMessage(`Enemy {data.name}! Take cover!`, Color3.fromRGB(255, 140, 120), 2.5)
-				Accessibility.caption(`ENEMY {string.upper(data.name)} — TAKE COVER`, 2.5)
+				showMessage(Localization.t("hud.enemy_special", { name = data.name }), Color3.fromRGB(255, 140, 120), 2.5)
+				Accessibility.caption(Localization.t("caption.enemy_special", {
+					name = string.upper(data.name),
+				}), 2.5)
 			end
 		elseif event == "BaseUnderAttack" then
 			baseAlarm()
 		elseif event == "SynergyUnlocked" and data then
 			if data.side == lastState.playerSide then
-				showMessage(`{string.upper(data.name)} DOCTRINE LOCKED IN!`, Color3.fromRGB(245, 210, 110), 4)
+				showMessage(Localization.t("hud.doctrine_unlocked", {
+					name = string.upper(data.name),
+				}), Color3.fromRGB(245, 210, 110), 4)
 			else
-				showMessage(`Enemy formed {data.name}`, Color3.fromRGB(255, 140, 120), 3)
+				showMessage(Localization.t("hud.enemy_doctrine", { name = data.name }), Color3.fromRGB(255, 140, 120), 3)
 			end
 		elseif event == "WaitingForOpponent" then
-			showMessage("WAITING FOR AN OPPONENT TO JOIN...", Color3.fromRGB(245, 210, 110))
+			showMessage(Localization.t("hud.waiting_opponent"), Color3.fromRGB(245, 210, 110))
 		elseif event == "QueueStatus" and data then
 			setQueueMode(true)
 			cancelQueueButton.Active = true
-			cancelQueueButton.Text = "CANCEL MATCHMAKING"
+			cancelQueueButton.Text = Localization.t("hud.cancel_matchmaking")
 			cancelQueueButton.Visible = true
-			showMessage(`MATCHMAKING • QUEUE POSITION {data.position}`, Color3.fromRGB(130, 205, 255))
+			showMessage(Localization.t("hud.queue_position", { position = data.position }), Color3.fromRGB(130, 205, 255))
 		elseif event == "MatchFound" then
 			setQueueMode(true)
 			cancelQueueButton.Visible = false
-			showMessage("OPPONENT FOUND • CREATING MATCH SERVER...", Color3.fromRGB(120, 235, 150))
+			showMessage(Localization.t("hud.opponent_found"), Color3.fromRGB(120, 235, 150))
 		elseif event == "QueueCancelled" then
 			cancelQueueButton.Visible = false
-			showMessage("MATCHMAKING CANCELLED", Color3.fromRGB(210, 210, 220), 3)
+			showMessage(Localization.t("hud.queue_cancelled"), Color3.fromRGB(210, 210, 220), 3)
 		elseif event == "QueueError" and data then
 			cancelQueueButton.Visible = false
-			showMessage(data.message or "MATCHMAKING RETRYING...", Color3.fromRGB(255, 150, 120), 5)
+			showMessage(data.message or Localization.t("hud.queue_retrying"), Color3.fromRGB(255, 150, 120), 5)
 		elseif event == "OpponentJoinFailed" then
-			showMessage("OPPONENT FAILED TO JOIN • RETURNING TO LOBBY", Color3.fromRGB(255, 150, 120))
+			showMessage(Localization.t("hud.opponent_join_failed"), Color3.fromRGB(255, 150, 120))
 		end
 	end)
 end

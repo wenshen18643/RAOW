@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Localization = require(ReplicatedStorage.Shared.Localization)
 
 local PveStartFlow = {}
 
@@ -49,6 +50,7 @@ local function makeButton(parent: Instance, text: string, position: UDim2, color
 	button.BorderSizePixel = 0
 	button.Font = Enum.Font.GothamBold
 	button.Text = text
+	button.TextWrapped = true
 	button.TextColor3 = Color3.new(1, 1, 1)
 	button.TextScaled = true
 	button.ZIndex = 203
@@ -104,7 +106,8 @@ local function ensureOverlay()
 	title.Position = UDim2.fromScale(0.08, 0.08)
 	title.Size = UDim2.fromScale(0.84, 0.18)
 	title.Font = Enum.Font.GothamBlack
-	title.Text = "PREPARING BATTLE"
+	title.Text = Localization.t("pve_start.title")
+	title.TextWrapped = true
 	title.TextColor3 = Color3.fromRGB(240, 200, 80)
 	title.TextScaled = true
 	title.ZIndex = 202
@@ -115,7 +118,7 @@ local function ensureOverlay()
 	status.Position = UDim2.fromScale(0.08, 0.29)
 	status.Size = UDim2.fromScale(0.84, 0.25)
 	status.Font = Enum.Font.Gotham
-	status.Text = "Checking your stage and preparing a server..."
+	status.Text = Localization.t("pve_start.checking")
 	status.TextColor3 = Color3.fromRGB(220, 220, 230)
 	status.TextScaled = true
 	status.TextWrapped = true
@@ -123,9 +126,9 @@ local function ensureOverlay()
 	status.Parent = card
 	statusLabel = status
 
-	cancelButton = makeButton(card, "CANCEL", UDim2.fromScale(0.5, 0.76), Color3.fromRGB(120, 65, 65))
-	retryButton = makeButton(card, "RETRY", UDim2.fromScale(0.3, 0.76), Color3.fromRGB(50, 145, 80))
-	backButton = makeButton(card, "BACK", UDim2.fromScale(0.7, 0.76), Color3.fromRGB(85, 85, 100))
+	cancelButton = makeButton(card, Localization.t("common.cancel"), UDim2.fromScale(0.5, 0.76), Color3.fromRGB(120, 65, 65))
+	retryButton = makeButton(card, Localization.t("common.retry"), UDim2.fromScale(0.3, 0.76), Color3.fromRGB(50, 145, 80))
+	backButton = makeButton(card, Localization.t("common.back"), UDim2.fromScale(0.7, 0.76), Color3.fromRGB(85, 85, 100))
 	retryButton.Visible = false
 	backButton.Visible = false
 end
@@ -157,8 +160,8 @@ local function sendRequest(request: Request)
 	request.watchdog += 1
 	request.committed = false
 	setVisible(true)
-	statusLabel.Text = "Checking your stage and preparing a server..."
-	cancelButton.Text = "CANCEL"
+	statusLabel.Text = Localization.t("pve_start.checking")
+	cancelButton.Text = Localization.t("common.cancel")
 	cancelButton.Active = true
 	cancelButton.Visible = true
 	retryButton.Visible = false
@@ -199,8 +202,8 @@ local function initialize()
 		local request = active
 		if not request or request.committed then return end
 		cancelButton.Active = false
-		cancelButton.Text = "CANCELLING..."
-		statusLabel.Text = "Cancelling battle preparation..."
+		cancelButton.Text = Localization.t("common.cancelling")
+		statusLabel.Text = Localization.t("pve_start.cancelling")
 		Remotes.CancelPveStart:FireServer(request.id)
 	end)
 	retryButton.Activated:Connect(retry)
@@ -222,15 +225,15 @@ local function initialize()
 					request.originVisible = false
 				end
 				statusLabel.Text = if stage == "teleporting"
-					then "Server ready. Joining battle..."
-					else "Starting battle..."
+					then Localization.t("pve_start.server_ready")
+					else Localization.t("pve_start.starting")
 				cancelButton.Visible = false
 			else
-				statusLabel.Text = (data and data.message) or "Preparing a battle server..."
+				statusLabel.Text = (data and data.message) or Localization.t("pve_start.preparing")
 			end
 		elseif event == "PveStartError" then
 			request.watchdog += 1
-			showFailure(request, (data and data.message) or "Battle could not start. Retry or go back.")
+			showFailure(request, (data and data.message) or Localization.t("pve_start.failed"))
 		elseif event == "PveStartCancelled" then
 			active = nil
 			request.watchdog += 1

@@ -3,8 +3,10 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Settings = require(script.Parent.Settings)
+local Localization = require(ReplicatedStorage.Shared.Localization)
 
 local Accessibility = {}
 
@@ -97,7 +99,7 @@ function Accessibility.caption(text: string, duration: number?)
 	if not Settings.get("criticalCaptions") or not captionLabel then return end
 	captionRevision += 1
 	local expected = captionRevision
-	captionLabel.Text = `[SOUND]  {text}`
+	captionLabel.Text = Localization.t("caption.sound", { text = text })
 	captionLabel.Visible = true
 	task.delay(duration or 2.5, function()
 		if expected == captionRevision and captionLabel then

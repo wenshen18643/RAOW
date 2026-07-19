@@ -13,6 +13,7 @@ local GameUI = require(script.Parent.GameUI)
 local Viewmodel = require(script.Parent.Viewmodel)
 local Settings = require(script.Parent.Settings)
 local Accessibility = require(script.Parent.Accessibility)
+local Localization = require(ReplicatedStorage.Shared.Localization)
 
 local VFXConfig = nil -- lazy loaded after Shared is ready
 
@@ -420,7 +421,7 @@ function FX.start()
 			statusVFX(data)
 		elseif kind == "BossSlamWarning" then
 			bossSlamWarning(data)
-			Accessibility.caption("BOSS SLAM CHARGING — MOVE OUT OF THE RING", data.duration or 2)
+			Accessibility.caption(Localization.t("caption.boss_slam"), data.duration or 2)
 		elseif kind == "Damage" then
 			damageNumber(data)
 		elseif kind == "Reward" then

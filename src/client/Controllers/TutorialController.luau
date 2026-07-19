@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local GameUI = require(script.Parent.GameUI)
 local InputPrompts = require(script.Parent.InputPrompts)
+local Localization = require(ReplicatedStorage.Shared.Localization)
 
 local TutorialController = {}
 
@@ -138,9 +139,10 @@ local function createUI()
 	skipStep.Position = UDim2.fromScale(1, 0.5)
 	skipStep.Size = UDim2.fromOffset(86, 34)
 	skipStep.BackgroundColor3 = Color3.fromRGB(55, 55, 68)
-	skipStep.Text = "SKIP STEP"
+	skipStep.Text = Localization.t("tutorial.skip_step")
 	skipStep.Font = FONT
-	skipStep.TextSize = 12
+	skipStep.TextScaled = true
+	skipStep.TextWrapped = true
 	skipStep.TextColor3 = Color3.fromRGB(220, 220, 230)
 	skipStep.Parent = frame
 	corner(skipStep, 8)
@@ -150,11 +152,12 @@ local function createUI()
 	local close = Instance.new("TextButton")
 	close.AnchorPoint = Vector2.new(1, 0)
 	close.Position = UDim2.new(1, 6, 0, -14)
-	close.Size = UDim2.new(0, 66, 0, 24)
+	close.Size = UDim2.new(0, 84, 0, 28)
 	close.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-	close.Text = "SKIP ALL"
+	close.Text = Localization.t("tutorial.skip_all")
 	close.Font = FONT
-	close.TextSize = 13
+	close.TextScaled = true
+	close.TextWrapped = true
 	close.TextColor3 = Color3.fromRGB(220, 220, 230)
 	close.Parent = frame
 	corner(close, 11)
@@ -201,23 +204,25 @@ local function setStep(step: number)
 
 	if not hintLabel then return end
 	if step == 1 then
-		hintLabel.Text = InputPrompts.instruction("slot1", "recruit a Club Man", "Tap the first unit card to recruit a Club Man")
+		hintLabel.Text = if InputPrompts.getMode() == "Touch"
+			then Localization.t("tutorial.recruit_touch")
+			else Localization.t("tutorial.recruit_press", { prompt = InputPrompts.get("slot1") })
 		pointAt(GameUI.getSlotButton(1))
 	elseif step == 2 then
-		hintLabel.Text = "Damage the enemy base or defeat an enemy to earn XP"
+		hintLabel.Text = Localization.t("tutorial.earn_xp")
 		pointAt(nil)
 	elseif step == 3 then
-		hintLabel.Text = "Build a turret with your hotbar"
+		hintLabel.Text = Localization.t("tutorial.build_turret")
 		pointAt(GameUI.getSlotButton(5))
 	elseif step == 4 then
-		hintLabel.Text = "Evolve to the next Age when your XP is full"
+		hintLabel.Text = Localization.t("tutorial.evolve")
 		pointAt(nil) -- points at the Evolve button once canEvolve is true
 	elseif step == 5 then
-		hintLabel.Text = "Destroy the enemy base to win! First win grants bonus XP -> Level 2"
+		hintLabel.Text = Localization.t("tutorial.win")
 		pointAt(nil)
 	end
 	if skipStepButton then
-		skipStepButton.Text = if step == 5 then "FINISH" else "SKIP STEP"
+		skipStepButton.Text = if step == 5 then Localization.t("tutorial.finish") else Localization.t("tutorial.skip_step")
 	end
 end
 setStepRef = setStep

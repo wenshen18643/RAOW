@@ -10,6 +10,7 @@ local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 local UISelection = require(script.Parent.UISelection)
 local PveStartFlow = require(script.Parent.PveStartFlow)
+local Localization = require(ReplicatedStorage.Shared.Localization)
 
 local LobbyPortals = {}
 
@@ -38,6 +39,7 @@ local function label(parent: Instance, props: { [string]: any }): TextLabel
 	l.Font = FONT
 	l.TextColor3 = Color3.new(1, 1, 1)
 	l.TextScaled = true
+	l.TextWrapped = true
 	for k, v in props do
 		(l :: any)[k] = v
 	end
@@ -55,6 +57,7 @@ local function button(parent: Instance, text: string, pos: UDim2, size: UDim2, c
 	btn.Font = FONT
 	btn.TextColor3 = Color3.new(1, 1, 1)
 	btn.TextScaled = true
+	btn.TextWrapped = true
 	btn.Parent = parent
 	btn.ZIndex = parent.ZIndex + 1
 	corner(btn, 8)
@@ -144,7 +147,9 @@ local function openConfirmPanel(pad: BasePart)
 	stroke.Parent = panelFrame
 	
 	-- Title
-	local titleText = if mode == "pvp" then "RANKED 1v1" else `{string.upper(pveMode or "NORMAL")} CAMPAIGN`
+	local titleText = if mode == "pvp" then Localization.t("portal.pvp_title") else Localization.t("portal.campaign_title", {
+		difficulty = string.upper(pveMode or "NORMAL"),
+	})
 	label(panelFrame, {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.fromScale(0.5, 0.05),
@@ -161,25 +166,25 @@ local function openConfirmPanel(pad: BasePart)
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.fromScale(0.5, 0.25),
 			Size = UDim2.fromScale(0.8, 0.08),
-			Text = `YOUR RATING: {ratingVal}`,
+			Text = Localization.t("portal.rating", { rating = ratingVal }),
 			TextColor3 = Color3.new(1, 1, 1),
 		})
 		label(panelFrame, {
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.fromScale(0.5, 0.35),
 			Size = UDim2.fromScale(0.8, 0.06),
-			Text = "Queue for matchmaking against another player.",
+			Text = Localization.t("portal.pvp_description"),
 			TextColor3 = Color3.fromRGB(170, 170, 180),
 		})
 		
 		-- Buttons
-		button(panelFrame, "QUEUE BATTLE", UDim2.fromScale(0.28, 0.8), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(50, 150, 80), function()
+		button(panelFrame, Localization.t("portal.queue"), UDim2.fromScale(0.28, 0.8), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(50, 150, 80), function()
 			Remotes.SelectMode:FireServer("pvp")
 			cancelledPad = pad
 			closeConfirmPanel()
 		end)
 		
-		button(panelFrame, "CANCEL", UDim2.fromScale(0.72, 0.8), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(120, 60, 60), function()
+		button(panelFrame, Localization.t("common.cancel"), UDim2.fromScale(0.72, 0.8), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(120, 60, 60), function()
 			cancelledPad = pad
 			closeConfirmPanel()
 		end)
@@ -198,7 +203,7 @@ local function openConfirmPanel(pad: BasePart)
 			AnchorPoint = Vector2.new(0.5, 0),
 			Position = UDim2.fromScale(0.5, 0.14),
 			Size = UDim2.fromScale(0.8, 0.05),
-			Text = "Select a level to start your assault",
+			Text = Localization.t("portal.level_prompt"),
 			TextColor3 = Color3.fromRGB(180, 190, 200),
 		})
 		
@@ -220,7 +225,7 @@ local function openConfirmPanel(pad: BasePart)
 		
 		local goBtn: TextButton
 		local function updateGoText()
-			goBtn.Text = `GO — LEVEL {selectedLevel}`
+			goBtn.Text = Localization.t("portal.go_level", { level = selectedLevel })
 		end
 		
 		local totalLevelsToShow = math.max(20, prog + 4)
@@ -260,7 +265,7 @@ local function openConfirmPanel(pad: BasePart)
 			label(btn, {
 				Position = UDim2.fromScale(0, 0.1),
 				Size = UDim2.fromScale(1, 0.35),
-				Text = `Lv {lvl}`,
+				Text = Localization.t("common.level_short", { level = lvl }),
 				TextColor3 = if isLocked then Color3.fromRGB(120, 120, 120) else Color3.new(1, 1, 1),
 				ZIndex = 103,
 			})
@@ -269,7 +274,7 @@ local function openConfirmPanel(pad: BasePart)
 				label(btn, {
 					Position = UDim2.fromScale(0, 0.55),
 					Size = UDim2.fromScale(1, 0.3),
-					Text = "LOCKED",
+					Text = Localization.t("common.locked"),
 					TextColor3 = Color3.fromRGB(180, 60, 60),
 					ZIndex = 103,
 				})
@@ -277,7 +282,7 @@ local function openConfirmPanel(pad: BasePart)
 				label(btn, {
 					Position = UDim2.fromScale(0, 0.55),
 					Size = UDim2.fromScale(1, 0.3),
-					Text = "BOSS",
+					Text = Localization.t("common.boss"),
 					TextColor3 = Color3.fromRGB(255, 200, 200),
 					ZIndex = 103,
 				})
@@ -295,7 +300,7 @@ local function openConfirmPanel(pad: BasePart)
 		scroll.CanvasSize = UDim2.new(0, 0, 0, math.ceil(totalLevelsToShow / 4) * 80)
 		
 		-- Buttons
-		goBtn = button(panelFrame, `GO — LEVEL {selectedLevel}`, UDim2.fromScale(0.28, 0.82), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(50, 150, 80), function()
+		goBtn = button(panelFrame, Localization.t("portal.go_level", { level = selectedLevel }), UDim2.fromScale(0.28, 0.82), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(50, 150, 80), function()
 			PveStartFlow.request(pveMode, selectedLevel, {
 				onCommitted = function()
 					cancelledPad = pad
@@ -308,7 +313,7 @@ local function openConfirmPanel(pad: BasePart)
 			})
 		end)
 		
-		button(panelFrame, "CANCEL", UDim2.fromScale(0.72, 0.82), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(120, 60, 60), function()
+		button(panelFrame, Localization.t("common.cancel"), UDim2.fromScale(0.72, 0.82), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(120, 60, 60), function()
 			cancelledPad = pad
 			closeConfirmPanel()
 		end)

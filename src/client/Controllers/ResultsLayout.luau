@@ -16,6 +16,23 @@ export type Controls = {
 }
 
 function ResultsLayout.bind(controls: Controls)
+	for _, textControl in {
+		controls.title,
+		controls.countdown,
+		controls.primary,
+		controls.returnButton,
+		controls.armory,
+	} do
+		textControl.TextWrapped = true
+		textControl.TextTruncate = Enum.TextTruncate.None
+		if textControl.TextScaled then
+			local textConstraint = Instance.new("UITextSizeConstraint")
+			textConstraint.MinTextSize = 10
+			textConstraint.MaxTextSize = if textControl == controls.title then 48 else 24
+			textConstraint.Parent = textControl
+		end
+	end
+
 	local scroll = Instance.new("ScrollingFrame")
 	scroll.Name = "RewardScroll"
 	scroll.AnchorPoint = Vector2.new(0.5, 0)

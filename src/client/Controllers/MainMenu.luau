@@ -25,6 +25,7 @@ local UISelection = require(script.Parent.UISelection)
 local TutorialController = require(script.Parent.TutorialController)
 local InputPrompts = require(script.Parent.InputPrompts)
 local ResultsLayout = require(script.Parent.ResultsLayout)
+local Localization = require(ReplicatedStorage.Shared.Localization)
 local PveStartFlow = require(script.Parent.PveStartFlow)
 
 local MainMenu = {}
@@ -86,6 +87,7 @@ local function label(parent: Instance, props: { [string]: any }): TextLabel
 	l.Font = FONT
 	l.TextColor3 = Color3.new(1, 1, 1)
 	l.TextScaled = true
+	l.TextWrapped = true
 	for k, v in props do
 		(l :: any)[k] = v
 	end
@@ -103,6 +105,7 @@ local function button(parent: Instance, text: string, pos: UDim2, size: UDim2, c
 	btn.Font = FONT
 	btn.TextColor3 = Color3.new(1, 1, 1)
 	btn.TextScaled = true
+	btn.TextWrapped = true
 	btn.Parent = parent
 	btn.ZIndex = parent.ZIndex + 1
 	corner(btn, 10)
@@ -336,7 +339,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.1, 0),
 		Size = UDim2.new(0.62, 0, 0.13, 0),
-		Text = "AGE OF WAR",
+		Text = Localization.t("menu.game_title"),
 		Font = FONT_BLACK,
 	})
 	local stroke = Instance.new("UIStroke")
@@ -348,7 +351,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.235, 0),
 		Size = UDim2.new(0.34, 0, 0.038, 0),
-		Text = "F I R S T   P E R S O N",
+		Text = Localization.t("menu.game_subtitle"),
 		TextColor3 = GOLD,
 	})
 
@@ -356,7 +359,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 0.985, 0),
 		Size = UDim2.new(0.5, 0, 0.022, 0),
-		Text = "Fight through five ages. Command your army. Destroy the enemy base.",
+		Text = Localization.t("menu.tagline"),
 		TextColor3 = Color3.fromRGB(190, 190, 200),
 	})
 
@@ -371,7 +374,7 @@ function MainMenu.start()
 	local levelLabel = label(profileBlock, {
 		Position = UDim2.new(0, 0, 0, 0),
 		Size = UDim2.new(1, 0, 0.4, 0),
-		Text = "LEVEL 1",
+		Text = Localization.t("common.level", { level = 1 }),
 		TextXAlignment = Enum.TextXAlignment.Right,
 		TextColor3 = GOLD,
 	})
@@ -421,15 +424,15 @@ function MainMenu.start()
 	end
 
 	-- main buttons (direct children of menuRoot so input isn't blocked by an intermediate holder)
-	local playButton = button(menuRoot, "PLAY", UDim2.fromScale(0.5, 0.42), UDim2.new(0.22, 0, 0.085, 0), Color3.fromRGB(50, 130, 70), function()
+	local playButton = button(menuRoot, Localization.t("menu.play"), UDim2.fromScale(0.5, 0.42), UDim2.new(0.22, 0, 0.085, 0), Color3.fromRGB(50, 130, 70), function()
 		closePanels()
 		modePanel.Visible = true
 	end)
-	button(menuRoot, "SETTINGS", UDim2.fromScale(0.5, 0.55), UDim2.new(0.22, 0, 0.07, 0), Color3.fromRGB(55, 65, 90), function()
+	button(menuRoot, Localization.t("menu.settings"), UDim2.fromScale(0.5, 0.55), UDim2.new(0.22, 0, 0.07, 0), Color3.fromRGB(55, 65, 90), function()
 		closePanels()
 		settingsPanel.Visible = true
 	end)
-	button(menuRoot, "HOW TO PLAY", UDim2.fromScale(0.5, 0.665), UDim2.new(0.22, 0, 0.07, 0), Color3.fromRGB(55, 65, 90), function()
+	button(menuRoot, Localization.t("menu.how_to_play"), UDim2.fromScale(0.5, 0.665), UDim2.new(0.22, 0, 0.07, 0), Color3.fromRGB(55, 65, 90), function()
 		closePanels()
 		helpPanel.Visible = true
 	end)
@@ -437,7 +440,7 @@ function MainMenu.start()
 	local currentBoardType = "pvp"
 
 	-- left rail: secondary destinations
-	button(menuRoot, "LEADERBOARD", UDim2.fromScale(0.09, 0.42), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(55, 65, 90), function()
+	button(menuRoot, Localization.t("menu.leaderboard"), UDim2.fromScale(0.09, 0.42), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(55, 65, 90), function()
 		closePanels()
 		boardPanel.Visible = true
 		Remotes.RequestLeaderboard:FireServer(currentBoardType == "pve" and "pve" or nil)
@@ -445,7 +448,7 @@ function MainMenu.start()
 	
 	-- Refresh upgrades panel UI when opened
 	local refreshUpgradesUI: () -> ()
-	button(menuRoot, "UPGRADES", UDim2.fromScale(0.09, 0.51), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(150, 110, 30), function()
+	button(menuRoot, Localization.t("menu.upgrades"), UDim2.fromScale(0.09, 0.51), UDim2.new(0.13, 0, 0.055, 0), Color3.fromRGB(150, 110, 30), function()
 		closePanels()
 		refreshUpgradesUI()
 		pveUpgradesPanel.Visible = true
@@ -458,13 +461,13 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.06, 0),
 		Size = UDim2.new(0.8, 0, 0.14, 0),
-		Text = "SELECT MODE",
+		Text = Localization.t("menu.select_mode"),
 		ZIndex = 11,
 	})
 
 	local refreshLevelsUI: () -> ()
 	local levelsPage = 1 -- 20 levels per page; the campaign is endless
-	button(modePanel, "PvE", UDim2.fromScale(0.5, 0.4), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(50, 130, 70), function()
+	button(modePanel, Localization.t("menu.pve"), UDim2.fromScale(0.5, 0.4), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(50, 130, 70), function()
 		closePanels()
 		levelsPage = math.floor((currentPveProgress[selectedPveMode] or 0) / 20) + 1
 		refreshLevelsUI()
@@ -474,12 +477,12 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.47, 0),
 		Size = UDim2.new(0.7, 0, 0.035, 0),
-		Text = "Endless stages across three difficulties. Boss every 5 levels.",
+		Text = Localization.t("menu.pve_description"),
 		TextColor3 = Color3.fromRGB(170, 170, 180),
 		ZIndex = 11,
 	})
 
-	button(modePanel, "PvP 1v1", UDim2.fromScale(0.5, 0.62), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(60, 100, 160), function()
+	button(modePanel, Localization.t("menu.pvp"), UDim2.fromScale(0.5, 0.62), UDim2.new(0.6, 0, 0.13, 0), Color3.fromRGB(60, 100, 160), function()
 		Remotes.SelectMode:FireServer("pvp", "Normal")
 		closePanels()
 		-- menu stays open so the queue status overlay is visible
@@ -488,12 +491,12 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.69, 0),
 		Size = UDim2.new(0.7, 0, 0.035, 0),
-		Text = "Ranked matchmaking against another player.",
+		Text = Localization.t("menu.pvp_description"),
 		TextColor3 = Color3.fromRGB(170, 170, 180),
 		ZIndex = 11,
 	})
 
-	button(modePanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.08, 0), Color3.fromRGB(60, 60, 70), function()
+	button(modePanel, Localization.t("common.back"), UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.08, 0), Color3.fromRGB(60, 60, 70), function()
 		modePanel.Visible = false
 	end).ZIndex = 11
 
@@ -504,7 +507,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.02, 0),
 		Size = UDim2.new(0.8, 0, 0.08, 0),
-		Text = "PvE LEVELS",
+		Text = Localization.t("menu.pve_levels"),
 		ZIndex = 11,
 	})
 	
@@ -607,7 +610,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.745, 0),
 		Size = UDim2.new(0.32, 0, 0.06, 0),
-		Text = "Levels 1 - 20",
+		Text = Localization.t("menu.level_range", { first = 1, last = 20 }),
 		ZIndex = 11,
 	})
 	local nextPageBtn = button(levelsPanel, ">", UDim2.fromScale(0.72, 0.745), UDim2.new(0.08, 0, 0.06, 0), Color3.fromRGB(60, 60, 70), function()
@@ -628,7 +631,7 @@ function MainMenu.start()
 		ZIndex = 11,
 	})
 
-	local playNextBtn = button(levelsPanel, "PLAY NEXT — LEVEL 1", UDim2.fromScale(0.5, 0.845), UDim2.new(0.5, 0, 0.07, 0), Color3.fromRGB(150, 110, 40), function()
+	local playNextBtn = button(levelsPanel, Localization.t("menu.play_next", { level = 1 }), UDim2.fromScale(0.5, 0.845), UDim2.new(0.5, 0, 0.07, 0), Color3.fromRGB(150, 110, 40), function()
 		startLevel((currentPveProgress[selectedPveMode] or 0) + 1)
 	end)
 	playNextBtn.ZIndex = 11
@@ -641,24 +644,23 @@ function MainMenu.start()
 		end
 		local firstLevel = (levelsPage - 1) * LEVELS_PER_PAGE + 1
 		local lastLevel = levelsPage * LEVELS_PER_PAGE
-		pageLabel.Text = `Levels {firstLevel} - {lastLevel}`
+		pageLabel.Text = Localization.t("menu.level_range", { first = firstLevel, last = lastLevel })
 		prevPageBtn.Visible = levelsPage > 1
 		nextPageBtn.Visible = true
-		playNextBtn.Text = `PLAY NEXT — LEVEL {prog + 1}`
+		playNextBtn.Text = Localization.t("menu.play_next", { level = prog + 1 })
 		playNextBtn.BackgroundColor3 = Color3.fromRGB(150, 110, 40)
 		local nextPreview = PvELevels.stagePreview(selectedPveMode, prog + 1)
 		local nextStage = CampaignStages.preview(prog + 1)
-		stagePreviewLabel.Text = string.format(
-			"NEXT: %s — %s / %s — %s\nEnemy HP x%.2f  |  Damage x%.2f  |  Recommended: %d tiers — %s",
-			nextStage.name,
-			string.upper(nextStage.map),
-			nextStage.objective,
-			nextStage.modifier,
-			nextPreview.hpMult,
-			nextPreview.damageMult,
-			nextPreview.recommendedTiers,
-			nextPreview.guidance
-		)
+		stagePreviewLabel.Text = Localization.t("menu.stage_preview", {
+			name = nextStage.name,
+			map = string.upper(nextStage.map),
+			objective = nextStage.objective,
+			modifier = nextStage.modifier,
+			health = string.format("%.2f", nextPreview.hpMult),
+			damage = string.format("%.2f", nextPreview.damageMult),
+			tiers = nextPreview.recommendedTiers,
+			guidance = nextPreview.guidance,
+		})
 		for lvl = firstLevel, lastLevel do
 			local isBoss = PvELevels.isBossLevel(lvl)
 			local isLocked = lvl > prog + 1
@@ -676,19 +678,25 @@ function MainMenu.start()
 			
 			label(btn, {
 				Position = UDim2.new(0, 0, 0.05, 0), Size = UDim2.new(1, 0, 0.25, 0),
-				Text = `Lv {lvl}`, TextColor3 = isLocked and Color3.fromRGB(100,100,100) or Color3.new(1,1,1), ZIndex = 13
+				Text = Localization.t("common.level_short", { level = lvl }), TextColor3 = isLocked and Color3.fromRGB(100,100,100) or Color3.new(1,1,1), ZIndex = 13
 			})
 			local preview = PvELevels.stagePreview(selectedPveMode, lvl)
 			local stage = CampaignStages.preview(lvl)
 			label(btn, {
 				Position = UDim2.new(0.04, 0, 0.29, 0), Size = UDim2.new(0.92, 0, 0.14, 0),
-				Text = string.format("%s • %s", string.upper(stage.map), stage.objective),
+				Text = Localization.t("menu.stage_map_objective", {
+					map = string.upper(stage.map),
+					objective = stage.objective,
+				}),
 				TextScaled = false, TextSize = 9,
 				TextColor3 = isLocked and Color3.fromRGB(90, 90, 95) or Color3.fromRGB(205, 215, 230), ZIndex = 13
 			})
 			label(btn, {
 				Position = UDim2.new(0.04, 0, 0.46, 0), Size = UDim2.new(0.92, 0, 0.14, 0),
-				Text = string.format("HP x%.1f  DMG x%.1f", preview.hpMult, preview.damageMult),
+				Text = Localization.t("menu.stage_power", {
+					health = string.format("%.1f", preview.hpMult),
+					damage = string.format("%.1f", preview.damageMult),
+				}),
 				TextScaled = false, TextSize = 10,
 				TextColor3 = if isBoss and not isLocked then Color3.new(1, 0.8, 0.8)
 					elseif isLocked then Color3.fromRGB(90, 90, 95)
@@ -705,19 +713,21 @@ function MainMenu.start()
 			if isLocked then
 				label(btn, {
 					Position = UDim2.new(0, 0, 0.73, 0), Size = UDim2.new(1, 0, 0.18, 0),
-					Text = "LOCKED", TextColor3 = Color3.fromRGB(150,50,50), ZIndex = 13
+					Text = Localization.t("common.locked"), TextColor3 = Color3.fromRGB(150,50,50), ZIndex = 13
 				})
 			elseif isNext then
 				label(btn, {
 					Position = UDim2.new(0, 0, 0.73, 0), Size = UDim2.new(1, 0, 0.18, 0),
-					Text = `+{PvELevels.coinsForClear(selectedPveMode, lvl, false)}c`, TextColor3 = Color3.fromRGB(240, 200, 80), ZIndex = 13
+					Text = Localization.t("menu.stage_reward", {
+						coins = PvELevels.coinsForClear(selectedPveMode, lvl, false),
+					}), TextColor3 = Color3.fromRGB(240, 200, 80), ZIndex = 13
 				})
 			end
 		end
 		levelsScroll.CanvasSize = UDim2.new(0, 0, 0, math.ceil((lastLevel - firstLevel + 1) / 4) * 110)
 	end
 	
-	button(levelsPanel, "BACK", UDim2.fromScale(0.5, 0.93), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
+	button(levelsPanel, Localization.t("common.back"), UDim2.fromScale(0.5, 0.93), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
 		closePanels()
 		modePanel.Visible = true
 	end).ZIndex = 11
@@ -729,7 +739,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.04, 0),
 		Size = UDim2.new(0.8, 0, 0.08, 0),
-		Text = "PvE UPGRADES & PERKS",
+		Text = Localization.t("menu.pve_upgrades"),
 		ZIndex = 11,
 	})
 	
@@ -737,7 +747,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.12, 0),
 		Size = UDim2.new(0.8, 0, 0.06, 0),
-		Text = "Coins: 0",
+		Text = Localization.t("common.coins", { coins = 0 }),
 		TextColor3 = Color3.fromRGB(255, 220, 80),
 		ZIndex = 11,
 	})
@@ -756,7 +766,7 @@ function MainMenu.start()
 	upgList.Parent = upgradesScroll
 	
 	refreshUpgradesUI = function()
-		coinsLabel.Text = `Coins: {currentCoins}`
+		coinsLabel.Text = Localization.t("common.coins", { coins = currentCoins })
 		for _, child in upgradesScroll:GetChildren() do
 			if child:IsA("Frame") then child:Destroy() end
 		end
@@ -778,7 +788,7 @@ function MainMenu.start()
 			local isMaxed = not isPerk and currentTier >= PvELevels.UPGRADE_TRACKS[id].maxTier
 			
 			local titleText = name
-			if not isPerk then titleText = `{name} (Tier {currentTier})` end
+			if not isPerk then titleText = Localization.t("menu.upgrade_tier", { name = name, tier = currentTier }) end
 			
 			label(row, {
 				Position = UDim2.new(0.05, 0, 0.1, 0), Size = UDim2.new(0.6, 0, 0.8, 0),
@@ -790,7 +800,8 @@ function MainMenu.start()
 			
 			local canBuy = currentCoins >= cost and not isOwned and not isMaxed
 			
-			local btnText = (isOwned or isMaxed) and "MAXED" or `BUY ({cost}c)`
+			local btnText = (isOwned or isMaxed) and Localization.t("common.maxed")
+				or Localization.t("menu.buy_cost", { cost = cost })
 			local btnColor = (isOwned or isMaxed) and Color3.fromRGB(50, 100, 50)
 				or (canBuy and Color3.fromRGB(150, 110, 30) or Color3.fromRGB(80, 40, 40))
 				
@@ -811,14 +822,14 @@ function MainMenu.start()
 		upgradesScroll.CanvasSize = UDim2.new(0, 0, 0, layoutOrder * 58)
 	end
 	
-	button(pveUpgradesPanel, isLobbyServer and "CLOSE" or "BACK", UDim2.fromScale(0.5, 0.93), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
+	button(pveUpgradesPanel, isLobbyServer and Localization.t("common.close") or Localization.t("common.back"), UDim2.fromScale(0.5, 0.93), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
 		closePanels()
 	end).ZIndex = 11
 
 	--------------------------------------------------------------------------------
 	-- first-battle signpost (new players only): straight into a guided PvE match
 	--------------------------------------------------------------------------------
-	local firstBattleBtn = button(menuRoot, "FIRST BATTLE  —  WIN FOR 300 XP", UDim2.fromScale(0.5, 0.325), UDim2.new(0.28, 0, 0.06, 0), Color3.fromRGB(170, 130, 30), function()
+	local firstBattleBtn = button(menuRoot, Localization.t("menu.first_battle"), UDim2.fromScale(0.5, 0.325), UDim2.new(0.28, 0, 0.06, 0), Color3.fromRGB(170, 130, 30), function()
 		selectedPveMode = "Normal"
 		startLevel((currentPveProgress.Normal or 0) + 1, false)
 	end)
@@ -846,7 +857,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.04, 0),
 		Size = UDim2.new(0.8, 0, 0.06, 0),
-		Text = "LEADERBOARD",
+		Text = Localization.t("menu.leaderboard"),
 		ZIndex = 11,
 	})
 	
@@ -854,7 +865,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.22, 0),
 		Size = UDim2.new(0.84, 0, 0.62, 0),
-		Text = "Loading...",
+		Text = Localization.t("menu.loading"),
 		TextScaled = false,
 		TextSize = 20,
 		TextWrapped = true,
@@ -863,20 +874,20 @@ function MainMenu.start()
 		ZIndex = 11,
 	})
 	
-	local pvpTab = button(boardPanel, "PVP RATING", UDim2.new(0.3, 0, 0.14, 0), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(80, 120, 180), function()
+	local pvpTab = button(boardPanel, Localization.t("menu.pvp_rating"), UDim2.new(0.3, 0, 0.14, 0), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(80, 120, 180), function()
 		currentBoardType = "pvp"
-		boardRows.Text = "Loading..."
+		boardRows.Text = Localization.t("menu.loading")
 		Remotes.RequestLeaderboard:FireServer(nil)
 	end)
 	pvpTab.ZIndex = 11
 	
-	local pveTab = button(boardPanel, "CAMPAIGN SCORE", UDim2.new(0.7, 0, 0.14, 0), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(150, 90, 40), function()
+	local pveTab = button(boardPanel, Localization.t("menu.campaign_score"), UDim2.new(0.7, 0, 0.14, 0), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(150, 90, 40), function()
 		currentBoardType = "pve"
-		boardRows.Text = "Loading..."
+		boardRows.Text = Localization.t("menu.loading")
 		Remotes.RequestLeaderboard:FireServer("pve")
 	end)
 	pveTab.ZIndex = 11
-	button(boardPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
+	button(boardPanel, Localization.t("common.back"), UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
 		boardPanel.Visible = false
 	end).ZIndex = 11
 
@@ -887,33 +898,33 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.05, 0),
 		Size = UDim2.new(0.8, 0, 0.11, 0),
-		Text = "SETTINGS",
+		Text = Localization.t("menu.settings"),
 		ZIndex = 11,
 	})
 	local applyingSettings = false
-	local setSensitivity = slider(settingsPanel, "Mouse Sensitivity", UDim2.new(0.5, 0, 0.13, 0), Settings.get("mouseSensitivity"), function(v)
+	local setSensitivity = slider(settingsPanel, Localization.t("menu.mouse_sensitivity"), UDim2.new(0.5, 0, 0.13, 0), Settings.get("mouseSensitivity"), function(v)
 		-- 0..1 -> 0.2..2.5
 		UserInputService.MouseDeltaSensitivity = 0.2 + v * 2.3
 		if not applyingSettings then Settings.set("mouseSensitivity", v) end
 	end)
-	local setSfx = slider(settingsPanel, "SFX Volume", UDim2.new(0.5, 0, 0.26, 0), Settings.get("sfxVolume"), function(v)
+	local setSfx = slider(settingsPanel, Localization.t("menu.sfx_volume"), UDim2.new(0.5, 0, 0.26, 0), Settings.get("sfxVolume"), function(v)
 		Audio.setGroupVolume("SFX", v)
 		if not applyingSettings then Settings.set("sfxVolume", v) end
 	end)
-	local setUi = slider(settingsPanel, "UI Volume", UDim2.new(0.5, 0, 0.39, 0), Settings.get("uiVolume"), function(v)
+	local setUi = slider(settingsPanel, Localization.t("menu.ui_volume"), UDim2.new(0.5, 0, 0.39, 0), Settings.get("uiVolume"), function(v)
 		Audio.setGroupVolume("UI", v)
 		if not applyingSettings then Settings.set("uiVolume", v) end
 	end)
-	local setMusic = slider(settingsPanel, "Music Volume", UDim2.new(0.5, 0, 0.52, 0), Settings.get("musicVolume"), function(v)
+	local setMusic = slider(settingsPanel, Localization.t("menu.music_volume"), UDim2.new(0.5, 0, 0.52, 0), Settings.get("musicVolume"), function(v)
 		Audio.setMusicVolume(v)
 		if not applyingSettings then Settings.set("musicVolume", v) end
 	end)
 	local reducedBtn: TextButton
 	local numbersBtn: TextButton
 	local function refreshComfortButtons()
-		reducedBtn.Text = Settings.get("reducedEffects") and "REDUCED EFFECTS: ON" or "REDUCED EFFECTS: OFF"
+		reducedBtn.Text = Settings.get("reducedEffects") and Localization.t("menu.reduced_effects_on") or Localization.t("menu.reduced_effects_off")
 		reducedBtn.BackgroundColor3 = Settings.get("reducedEffects") and Color3.fromRGB(55, 120, 75) or Color3.fromRGB(70, 70, 82)
-		numbersBtn.Text = Settings.get("showDamageNumbers") and "DAMAGE NUMBERS: ON" or "DAMAGE NUMBERS: OFF"
+		numbersBtn.Text = Settings.get("showDamageNumbers") and Localization.t("menu.damage_numbers_on") or Localization.t("menu.damage_numbers_off")
 		numbersBtn.BackgroundColor3 = Settings.get("showDamageNumbers") and Color3.fromRGB(55, 120, 75) or Color3.fromRGB(70, 70, 82)
 	end
 	reducedBtn = button(settingsPanel, "", UDim2.fromScale(0.5, 0.69), UDim2.new(0.55, 0, 0.07, 0), Color3.fromRGB(70, 70, 82), function()
@@ -927,12 +938,12 @@ function MainMenu.start()
 	end)
 	numbersBtn.ZIndex = 11
 	refreshComfortButtons()
-	button(settingsPanel, "ACCESSIBILITY", UDim2.fromScale(0.5, 0.875), UDim2.new(0.31, 0, 0.06, 0), Color3.fromRGB(65, 75, 105), function()
+	button(settingsPanel, Localization.t("menu.accessibility"), UDim2.fromScale(0.5, 0.875), UDim2.new(0.31, 0, 0.06, 0), Color3.fromRGB(65, 75, 105), function()
 		accessibilityPanel.Visible = true
 		settingsPanel.Visible = false
 		UISelection.focus(accessibilityPanel)
 	end).ZIndex = 11
-	button(settingsPanel, isLobbyServer and "CLOSE" or "BACK", UDim2.fromScale(0.5, 0.96), UDim2.new(0.24, 0, 0.06, 0), Color3.fromRGB(60, 60, 70), function()
+	button(settingsPanel, isLobbyServer and Localization.t("common.close") or Localization.t("common.back"), UDim2.fromScale(0.5, 0.96), UDim2.new(0.24, 0, 0.06, 0), Color3.fromRGB(60, 60, 70), function()
 		settingsPanel.Visible = false
 	end).ZIndex = 11
 
@@ -943,16 +954,16 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.fromScale(0.5, 0.025),
 		Size = UDim2.new(0.84, 0, 0.08, 0),
-		Text = "ACCESSIBILITY",
+		Text = Localization.t("menu.accessibility"),
 		ZIndex = 11,
 	})
-	local setAccessibilityScale = slider(accessibilityPanel, "UI / Text Scale", UDim2.fromScale(0.5, 0.11), Settings.get("uiScale"), function(v)
+	local setAccessibilityScale = slider(accessibilityPanel, Localization.t("menu.ui_scale"), UDim2.fromScale(0.5, 0.11), Settings.get("uiScale"), function(v)
 		if not applyingSettings then Settings.set("uiScale", v) end
 	end)
-	local setCrosshairSize = slider(accessibilityPanel, "Crosshair Size", UDim2.fromScale(0.5, 0.235), Settings.get("crosshairSize"), function(v)
+	local setCrosshairSize = slider(accessibilityPanel, Localization.t("menu.crosshair_size"), UDim2.fromScale(0.5, 0.235), Settings.get("crosshairSize"), function(v)
 		if not applyingSettings then Settings.set("crosshairSize", v) end
 	end)
-	local setFov = slider(accessibilityPanel, "Field of View", UDim2.fromScale(0.5, 0.36),
+	local setFov = slider(accessibilityPanel, Localization.t("menu.field_of_view"), UDim2.fromScale(0.5, 0.36),
 		(math.clamp(Settings.get("fieldOfView"), 60, 100) - 60) / 40, function(v)
 			if not applyingSettings then Settings.set("fieldOfView", math.floor(60 + v * 40 + 0.5)) end
 		end)
@@ -969,10 +980,10 @@ function MainMenu.start()
 		local visible = Settings.get("crosshairVisible") ~= false
 		local contrast = Settings.get("crosshairHighContrast") == true
 		local captions = Settings.get("criticalCaptions") ~= false
-		colorblindBtn.Text = colorblind and "TEAM COLORS: ACCESSIBLE" or "TEAM COLORS: STANDARD"
-		crossVisibleBtn.Text = visible and "CROSSHAIR: ON" or "CROSSHAIR: OFF"
-		crossContrastBtn.Text = contrast and "HIGH CONTRAST: ON" or "HIGH CONTRAST: OFF"
-		captionsBtn.Text = captions and "CRITICAL CAPTIONS: ON" or "CRITICAL CAPTIONS: OFF"
+		colorblindBtn.Text = colorblind and Localization.t("menu.team_colors_accessible") or Localization.t("menu.team_colors_standard")
+		crossVisibleBtn.Text = visible and Localization.t("menu.crosshair_on") or Localization.t("menu.crosshair_off")
+		crossContrastBtn.Text = contrast and Localization.t("menu.high_contrast_on") or Localization.t("menu.high_contrast_off")
+		captionsBtn.Text = captions and Localization.t("menu.captions_on") or Localization.t("menu.captions_off")
 		toggleColor(colorblindBtn, colorblind)
 		toggleColor(crossVisibleBtn, visible)
 		toggleColor(crossContrastBtn, contrast)
@@ -996,7 +1007,7 @@ function MainMenu.start()
 	end)
 	for _, item in { colorblindBtn, crossVisibleBtn, crossContrastBtn, captionsBtn } do item.ZIndex = 11 end
 	refreshAccessibilityButtons()
-	button(accessibilityPanel, "BACK TO SETTINGS", UDim2.fromScale(0.5, 0.88), UDim2.new(0.32, 0, 0.075, 0), Color3.fromRGB(60, 60, 70), function()
+	button(accessibilityPanel, Localization.t("menu.back_to_settings"), UDim2.fromScale(0.5, 0.88), UDim2.new(0.32, 0, 0.075, 0), Color3.fromRGB(60, 60, 70), function()
 		settingsPanel.Visible = true
 		accessibilityPanel.Visible = false
 		UISelection.focus(settingsPanel)
@@ -1012,7 +1023,7 @@ function MainMenu.start()
 	matchControls.ZIndex = 30
 	matchControls.Parent = gui
 	local matchSettingsButton = button(matchControls,
-		InputPrompts.withPrompt("SETTINGS", "settings"),
+		InputPrompts.withPrompt(Localization.t("menu.settings"), "settings"),
 		UDim2.fromScale(0.245, 0.5), UDim2.fromScale(0.47, 1), Color3.fromRGB(55, 65, 90), function()
 			local shouldOpen = not settingsPanel.Visible and not accessibilityPanel.Visible
 			accessibilityPanel.Visible = false
@@ -1039,7 +1050,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.fromScale(0.5, 0.08),
 		Size = UDim2.new(0.86, 0, 0, 40),
-		Text = "LEAVE ACTIVE MATCH?",
+		Text = Localization.t("menu.leave_title"),
 		Font = FONT_BLACK,
 		ZIndex = 81,
 	})
@@ -1054,19 +1065,19 @@ function MainMenu.start()
 		TextColor3 = Color3.fromRGB(235, 205, 145),
 		ZIndex = 81,
 	})
-	local surrenderYes = button(surrenderConfirm, "SURRENDER", UDim2.fromScale(0.35, 0.78), UDim2.new(0.26, 0, 0, 48), Color3.fromRGB(150, 55, 52), function()
+	local surrenderYes = button(surrenderConfirm, Localization.t("menu.surrender"), UDim2.fromScale(0.35, 0.78), UDim2.new(0.26, 0, 0, 48), Color3.fromRGB(150, 55, 52), function()
 		surrenderConfirm.Visible = false
 		Remotes.SurrenderMatch:FireServer()
 	end)
 	surrenderYes.ZIndex = 81
-	local surrenderNo = button(surrenderConfirm, "KEEP PLAYING", UDim2.fromScale(0.68, 0.78), UDim2.new(0.32, 0, 0, 48), Color3.fromRGB(55, 95, 75), function()
+	local surrenderNo = button(surrenderConfirm, Localization.t("menu.keep_playing"), UDim2.fromScale(0.68, 0.78), UDim2.new(0.32, 0, 0, 48), Color3.fromRGB(55, 95, 75), function()
 		surrenderConfirm.Visible = false
 	end)
 	surrenderNo.ZIndex = 81
-	local surrenderButton = button(matchControls, "LEAVE MATCH", UDim2.fromScale(0.755, 0.5), UDim2.fromScale(0.47, 1), Color3.fromRGB(120, 52, 52), function()
+	local surrenderButton = button(matchControls, Localization.t("menu.leave_match"), UDim2.fromScale(0.755, 0.5), UDim2.fromScale(0.47, 1), Color3.fromRGB(120, 52, 52), function()
 		surrenderWarning.Text = if lastMode == "PvP"
-			then "This counts as a ranked loss and your rating will decrease. A disconnect has the same result after a short reconnect grace period."
-			else "This ends the run immediately and records a defeat. Current match rewards will be forfeited."
+			then Localization.t("menu.surrender_pvp_warning")
+			else Localization.t("menu.surrender_pve_warning")
 		surrenderConfirm.Visible = true
 		UISelection.focus(surrenderConfirm, surrenderNo)
 	end)
@@ -1121,7 +1132,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.05, 0),
 		Size = UDim2.new(0.8, 0, 0.1, 0),
-		Text = "HOW TO PLAY",
+		Text = Localization.t("menu.how_to_play"),
 		ZIndex = 11,
 	})
 	local helpBody = label(helpPanel, {
@@ -1138,34 +1149,41 @@ function MainMenu.start()
 	local function refreshControlHelp()
 		local controlsText: string
 		if InputPrompts.getMode() == "Touch" then
-			controlsText = "Drag to aim • Use ATTACK and HEAVY buttons to fight\nTap unit cards to recruit • Tap turret, special, evolve, and panel buttons"
+			controlsText = Localization.t("menu.help_touch")
 		elseif InputPrompts.getMode() == "Gamepad" then
-			controlsText = `LEFT STICK — move • RIGHT STICK — aim • [RT] attack • [LT] heavy
-[{InputPrompts.get("slot1")}] / [{InputPrompts.get("slot2")}] / [{InputPrompts.get("slot3")}] / [{InputPrompts.get("slot4")}] — recruit units
-[{InputPrompts.get("slot5")}] build turret • [{InputPrompts.get("turrets")}] manage turrets • [{InputPrompts.get("slot6")}] special • [{InputPrompts.get("evolve")}] evolve`
+			controlsText = Localization.t("menu.help_gamepad", {
+				slot1 = InputPrompts.get("slot1"),
+				slot2 = InputPrompts.get("slot2"),
+				slot3 = InputPrompts.get("slot3"),
+				slot4 = InputPrompts.get("slot4"),
+				slot5 = InputPrompts.get("slot5"),
+				slot6 = InputPrompts.get("slot6"),
+				turrets = InputPrompts.get("turrets"),
+				evolve = InputPrompts.get("evolve"),
+			})
 		else
-			controlsText = "WASD — move • Mouse — aim • [LMB] attack • [RMB] heavy\n[1] / [2] / [3] / [4] — recruit units\n[5] build turret • [B] manage turrets • [6] special • [Q] evolve • [E]/[G] upgrades/guide"
+			controlsText = Localization.t("menu.help_keyboard")
 		end
 		helpBody.Text = table.concat({
-			"You are the HERO — fight in first person AND command your army.",
+			Localization.t("menu.help_intro"),
 			"",
 			controlsText,
 			"",
-			"There are 5 stages: Stone, Medieval, Renaissance, Modern, and Future.",
-			"Kills earn GOLD for troops and XP for evolution.",
-			"Evolving unlocks units, hero weapons, turrets, specials, and a tougher base.",
-			"YOUR GOAL: destroy the RED enemy base while protecting your BLUE base.",
+			Localization.t("menu.help_ages"),
+			Localization.t("menu.help_economy"),
+			Localization.t("menu.help_unlocks"),
+			Localization.t("menu.help_goal"),
 		}, "\n")
 	end
 	refreshControlHelp()
 	InputPrompts.onChanged(function()
-		matchSettingsButton.Text = InputPrompts.withPrompt("SETTINGS", "settings")
+		matchSettingsButton.Text = InputPrompts.withPrompt(Localization.t("menu.settings"), "settings")
 		refreshControlHelp()
 	end)
-	button(helpPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
+	button(helpPanel, Localization.t("common.back"), UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
 		helpPanel.Visible = false
 	end).ZIndex = 11
-	button(helpPanel, "REPLAY TUTORIAL", UDim2.fromScale(0.5, 0.83), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(80, 95, 130), function()
+	button(helpPanel, Localization.t("menu.replay_tutorial"), UDim2.fromScale(0.5, 0.83), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(80, 95, 130), function()
 		TutorialController.requestReplay()
 		helpPanel.Visible = false
 		modePanel.Visible = true
@@ -1188,7 +1206,7 @@ function MainMenu.start()
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.2, 0),
 		Size = UDim2.new(0.6, 0, 0.14, 0),
-		Text = "VICTORY",
+		Text = Localization.t("menu.victory"),
 		Font = FONT_BLACK,
 		ZIndex = 9,
 	})
@@ -1214,21 +1232,21 @@ function MainMenu.start()
 	local resultWaitingRematch = false
 	local resultRematchReady = 0
 	local resultPrimary: TextButton
-	resultPrimary = button(results, "PLAY AGAIN", UDim2.fromScale(0.38, 0.75), UDim2.new(0.2, 0, 0.065, 0), Color3.fromRGB(55, 125, 75), function()
+	resultPrimary = button(results, Localization.t("menu.play_again"), UDim2.fromScale(0.38, 0.75), UDim2.new(0.2, 0, 0.065, 0), Color3.fromRGB(55, 125, 75), function()
 		local action = if lastMode == "PvE" and resultCanNextStage then "next" else "replay"
 		Remotes.ResultAction:FireServer(action)
 		resultWaitingRematch = lastMode == "PvP"
 		if resultWaitingRematch then resultRematchReady = math.max(resultRematchReady, 1) end
 		resultPrimary.Active = false
-		resultPrimary.Text = lastMode == "PvP" and "REMATCH REQUESTED" or "STARTING..."
+		resultPrimary.Text = lastMode == "PvP" and Localization.t("menu.rematch_requested") or Localization.t("menu.starting")
 		resultPrimary.BackgroundColor3 = Color3.fromRGB(55, 60, 65)
 	end)
 	resultPrimary.ZIndex = 9
-	local resultReturn = button(results, "RETURN TO MENU", UDim2.fromScale(0.62, 0.75), UDim2.new(0.2, 0, 0.065, 0), Color3.fromRGB(55, 75, 105), function()
+	local resultReturn = button(results, Localization.t("menu.return_menu"), UDim2.fromScale(0.62, 0.75), UDim2.new(0.2, 0, 0.065, 0), Color3.fromRGB(55, 75, 105), function()
 		Remotes.ResultAction:FireServer("menu")
 	end)
 	resultReturn.ZIndex = 9
-	local resultArmory = button(results, "ARMORY / REWARDS", UDim2.fromScale(0.5, 0.845), UDim2.new(0.22, 0, 0.055, 0), Color3.fromRGB(105, 75, 145), function()
+	local resultArmory = button(results, Localization.t("menu.armory_rewards"), UDim2.fromScale(0.5, 0.845), UDim2.new(0.22, 0, 0.055, 0), Color3.fromRGB(105, 75, 145), function()
 		openStorefront()
 	end)
 	resultArmory.ZIndex = 9
@@ -1251,41 +1269,59 @@ function MainMenu.start()
 		local dur = os.clock() - matchStartAt
 		local mins = math.floor(dur / 60)
 		local secs = math.floor(dur % 60)
-		resultTitle.Text = won and "VICTORY" or "DEFEAT"
+		resultTitle.Text = won and Localization.t("menu.victory") or Localization.t("menu.defeat")
 		resultTitle.TextColor3 = won and Color3.fromRGB(120, 230, 120) or Color3.fromRGB(230, 90, 80)
-		local ratingText = ratingDelta and `\nRating:  {ratingDelta >= 0 and "+" or ""}{ratingDelta}` or ""
-		local modeText = lastMode == "PvP" and "1v1 PvP" or `PvE {lastDifficulty:upper()} Level {lastPveLevelPlayed}`
-		
-		local xpText = ""
+		local modeText = lastMode == "PvP" and Localization.t("menu.mode_pvp") or Localization.t("menu.mode_pve", {
+			difficulty = lastDifficulty:upper(),
+			level = lastPveLevelPlayed,
+		})
+		local statsLines = {
+			Localization.t("menu.result_mode", { mode = modeText }),
+			Localization.t("menu.result_age", { age = lastAgeName }),
+			Localization.t("menu.result_time", { minutes = mins, seconds = secs }),
+		}
+		if ratingDelta then
+			table.insert(statsLines, Localization.t("menu.result_rating", {
+				rating = `{ratingDelta >= 0 and "+" or ""}{ratingDelta}`,
+			}))
+		end
 		if xpData then
-			xpText = `\nXP Earned:  +{xpData.newXp - xpData.oldXp}`
+			table.insert(statsLines, Localization.t("menu.result_xp", { xp = xpData.newXp - xpData.oldXp }))
 			if xpData.levelups > 0 then
-				xpText ..= `\nLevel Up! (+{xpData.levelups})  •  +{xpData.warBondsEarned or 0} War Bonds`
+				table.insert(statsLines, Localization.t("menu.result_level_up", {
+					levels = xpData.levelups,
+					bonds = xpData.warBondsEarned or 0,
+				}))
 			end
 			if xpData.unlocks and #xpData.unlocks > 0 then
-				xpText ..= `\nUnlocked: {table.concat(xpData.unlocks, ", ")}`
+				table.insert(statsLines, Localization.t("menu.result_unlocked", {
+					unlocks = table.concat(xpData.unlocks, ", "),
+				}))
 			end
 			local unlock = nextUnlockText(currentLevel)
 			if unlock then
-				xpText ..= `\nNext unlock: {unlock}`
+				table.insert(statsLines, Localization.t("menu.result_next_unlock", { unlock = unlock }))
 			end
 		end
-		
-		local coinsText = coins and `\nCoins Earned: +{coins}` or ""
-		if firstClear then coinsText ..= " (First Clear Bonus!)" end
-		local bondsText = dailyWarBonds and dailyWarBonds > 0 and `\nDaily Orders: +{dailyWarBonds} War Bonds` or ""
-		
-		resultStats.Text = `Mode:  {modeText}\nAge reached:  {lastAgeName}\nBattle time:  {mins}m {secs}s{ratingText}{xpText}{coinsText}{bondsText}`
+		if coins then
+			local coinsText = Localization.t("menu.result_coins", { coins = coins })
+			if firstClear then coinsText ..= ` ({Localization.t("menu.result_first_clear")})` end
+			table.insert(statsLines, coinsText)
+		end
+		if dailyWarBonds and dailyWarBonds > 0 then
+			table.insert(statsLines, Localization.t("menu.result_daily", { bonds = dailyWarBonds }))
+		end
+		resultStats.Text = table.concat(statsLines, "\n")
 		resultCanNextStage = lastMode == "PvE" and won and canNextStage == true
 		resultWaitingRematch = false
 		resultRematchReady = 0
-		resultPrimary.Text = if lastMode == "PvP" then "REQUEST REMATCH"
-			elseif resultCanNextStage then `NEXT STAGE  ({lastPveLevelPlayed + 1})`
-			elseif lastMode == "PvE" then "REPLAY STAGE"
-			else "PLAY AGAIN"
+		resultPrimary.Text = if lastMode == "PvP" then Localization.t("menu.request_rematch")
+			elseif resultCanNextStage then Localization.t("menu.next_stage", { level = lastPveLevelPlayed + 1 })
+			elseif lastMode == "PvE" then Localization.t("menu.replay_stage")
+			else Localization.t("menu.play_again")
 		resultPrimary.Active = true
 		resultPrimary.BackgroundColor3 = Color3.fromRGB(55, 125, 75)
-		resultReturn.Text = lastMode == "PvP" and "RETURN TO LOBBY" or "RETURN TO MENU"
+		resultReturn.Text = lastMode == "PvP" and Localization.t("menu.return_lobby") or Localization.t("menu.return_menu")
 		results.Visible = true
 		task.spawn(function()
 			local destination = lastMode == "PvP" and "lobby" or "menu"
@@ -1294,11 +1330,11 @@ function MainMenu.start()
 					return
 				end
 				resultCountdown.Text = if resultWaitingRematch
-					then `Rematch ready: {resultRematchReady}/2 • returning to {destination} in {t}s`
-					else `Choose an option • returning to {destination} in {t}s`
+					then Localization.t("menu.rematch_countdown", { ready = resultRematchReady, destination = destination, seconds = t })
+					else Localization.t("menu.choose_countdown", { destination = destination, seconds = t })
 				task.wait(1)
 			end
-			if results.Visible then resultCountdown.Text = `Returning to {destination}...` end
+			if results.Visible then resultCountdown.Text = Localization.t("menu.returning", { destination = destination }) end
 		end)
 	end
 
@@ -1332,7 +1368,8 @@ function MainMenu.start()
 			if levelsPanel.Visible then refreshLevelsUI() end
 
 			local equippedTitle = MonetizationConfig.cosmeticById(profile.equippedTitle or "")
-			levelLabel.Text = equippedTitle and `LEVEL {profile.level}  •  {string.upper(equippedTitle.name)}` or `LEVEL {profile.level}`
+			levelLabel.Text = equippedTitle and `{Localization.t("common.level", { level = profile.level })} • {string.upper(equippedTitle.name)}`
+				or Localization.t("common.level", { level = profile.level })
 			local nextXp = ProgressionConfig.xpForLevel(profile.level + 1)
 			local prevXp = ProgressionConfig.xpForLevel(profile.level)
 			local progress = 0
@@ -1342,7 +1379,8 @@ function MainMenu.start()
 			if profile.level >= ProgressionConfig.MAX_LEVEL then progress = 1 end
 			xpFill.Size = UDim2.fromScale(progress, 1)
 			local unlock = nextUnlockText(profile.level)
-			nextUnlockLabel.Text = unlock and `Next: {unlock}` or "All rewards unlocked"
+			nextUnlockLabel.Text = unlock and Localization.t("menu.next_unlock", { unlock = unlock })
+				or Localization.t("menu.all_rewards")
 			firstBattleBtn.Visible = profile.tutorialDone ~= true
 		end
 	end)
@@ -1353,9 +1391,9 @@ function MainMenu.start()
 		
 		if #rows == 0 then
 			if boardType == "pvp" then
-				boardRows.Text = "No ratings yet. Win a PvP match to get on the board!"
+				boardRows.Text = Localization.t("menu.no_pvp_scores")
 			else
-				boardRows.Text = "No campaign score yet. Clear a stage in any difficulty to get on the board!"
+				boardRows.Text = Localization.t("menu.no_pve_scores")
 			end
 			return
 		end
@@ -1420,9 +1458,12 @@ function MainMenu.start()
 			if lobbyHud then lobbyHud.Visible = false end
 		elseif event == "RematchStatus" and data then
 			resultRematchReady = data.ready or 0
-			resultCountdown.Text = `Rematch ready: {resultRematchReady}/{data.required or 2} players`
+			resultCountdown.Text = Localization.t("menu.rematch_ready", {
+				ready = resultRematchReady,
+				required = data.required or 2,
+			})
 		elseif event == "ReturnError" and data then
-			resultCountdown.Text = data.message or "Couldn't return to the lobby. Press Return to retry."
+			resultCountdown.Text = data.message or Localization.t("menu.return_failed")
 		elseif event == "ReturnToMenu" then
 			inMatch = false
 			matchControls.Visible = false
@@ -1450,15 +1491,15 @@ function MainMenu.start()
 			task.spawn(function()
 				for remaining = grace, 1, -1 do
 					if reconnectNoticeId ~= noticeId then return end
-					reconnectBanner.Text = `Opponent disconnected — reconnect grace: {remaining}s. The battle remains active until they return or forfeit.`
+					reconnectBanner.Text = Localization.t("menu.opponent_grace", { seconds = remaining })
 					task.wait(1)
 				end
 			end)
 		elseif event == "OpponentReconnected" then
 			reconnectNoticeId += 1
-			reconnectBanner.Text = "Opponent reconnected."
+			reconnectBanner.Text = Localization.t("menu.opponent_reconnected")
 			task.delay(2, function()
-				if reconnectBanner.Text == "Opponent reconnected." then reconnectBanner.Visible = false end
+				if reconnectBanner.Text == Localization.t("menu.opponent_reconnected") then reconnectBanner.Visible = false end
 			end)
 		end
 	end)
@@ -1543,20 +1584,20 @@ function MainMenu.start()
 		layout.Parent = lobbyHud
 
 		-- SHOP button (opens storefront)
-		button(lobbyHud, "SHOP", UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(110, 70, 160), function()
+		button(lobbyHud, Localization.t("menu.shop"), UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(110, 70, 160), function()
 			closePanels()
 			openStorefront()
 		end)
 
 		-- UPGRADES button
-		button(lobbyHud, "UPGRADES", UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(150, 110, 30), function()
+		button(lobbyHud, Localization.t("menu.upgrades"), UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(150, 110, 30), function()
 			closePanels()
 			refreshUpgradesUI()
 			pveUpgradesPanel.Visible = true
 		end)
 
 		-- SETTINGS button
-		button(lobbyHud, "SETTINGS", UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(55, 65, 90), function()
+		button(lobbyHud, Localization.t("menu.settings"), UDim2.new(0, 0, 0.5, 0), UDim2.new(0.29, 0, 0, 32), Color3.fromRGB(55, 65, 90), function()
 			closePanels()
 			settingsPanel.Visible = true
 		end)
