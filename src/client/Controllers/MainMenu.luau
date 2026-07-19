@@ -834,7 +834,7 @@ function MainMenu.start()
 	end)
 	pvpTab.ZIndex = 11
 	
-	local pveTab = button(boardPanel, "PVE LEVELS", UDim2.new(0.7, 0, 0.14, 0), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(150, 90, 40), function()
+	local pveTab = button(boardPanel, "CAMPAIGN SCORE", UDim2.new(0.7, 0, 0.14, 0), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(150, 90, 40), function()
 		currentBoardType = "pve"
 		boardRows.Text = "Loading..."
 		Remotes.RequestLeaderboard:FireServer("pve")
@@ -1297,7 +1297,7 @@ function MainMenu.start()
 			if boardType == "pvp" then
 				boardRows.Text = "No ratings yet. Win a PvP match to get on the board!"
 			else
-				boardRows.Text = "No levels cleared yet. Beat PvE Level 1 to get on the board!"
+				boardRows.Text = "No campaign score yet. Clear a stage in any difficulty to get on the board!"
 			end
 			return
 		end
@@ -1308,7 +1308,7 @@ function MainMenu.start()
 				if boardType == "pvp" then
 					table.insert(lines, `{i}.  {row.name}  —  {row.rating}`)
 				else
-					table.insert(lines, `{i}.  {row.name}  —  Lv {row.rating}`)
+					table.insert(lines, `{i}.  {row.name}  —  {row.rating} total clears`)
 				end
 			end
 		end

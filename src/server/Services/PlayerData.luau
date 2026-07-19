@@ -303,9 +303,11 @@ function PlayerData.save(player: Player): boolean
 		warn("[PlayerData] Failed to save profile for " .. player.Name .. ": " .. tostring(err))
 	else
 		Leaderboard.submit(player.UserId, profile.rating)
-		local totalPve = profile.pveProgress.Normal + profile.pveProgress.Hard + profile.pveProgress.Impossible
-		if totalPve > 0 then
-			Leaderboard.submitPveLevel(player.UserId, totalPve)
+		-- Existing ordered-store values already contain this sum, so relabeling
+		-- it as Total Campaign Score is persistence-compatible.
+		local totalCampaignScore = profile.pveProgress.Normal + profile.pveProgress.Hard + profile.pveProgress.Impossible
+		if totalCampaignScore > 0 then
+			Leaderboard.submitPveLevel(player.UserId, totalCampaignScore)
 		end
 	end
 	if shouldSaveAgain and cache[player] and player.Parent then

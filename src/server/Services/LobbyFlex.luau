@@ -131,7 +131,7 @@ function LobbyFlex.buildLeaderboardWall()
 	wall.Parent = folder
 
 	local pvpRows = wallPanel(wall, Enum.NormalId.Front, "TOP COMMANDERS — PVP RATING")
-	local pveRows = wallPanel(wall, Enum.NormalId.Back, "TOP CAMPAIGNERS — PVE LEVEL")
+	local pveRows = wallPanel(wall, Enum.NormalId.Back, "TOP CAMPAIGNERS — TOTAL CLEARS")
 
 	task.spawn(function()
 		while wall.Parent do
