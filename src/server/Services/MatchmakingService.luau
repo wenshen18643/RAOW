@@ -204,6 +204,17 @@ function MatchmakingService.enqueue(player: Player)
 	enqueue(player)
 end
 
+function MatchmakingService.cancel(player: Player): boolean
+	if pending[player] or not tickets[player] then return false end
+	tickets[player] = nil
+	queuedAt[player] = nil
+	pcall(function() presence:RemoveAsync(playerKey(player.UserId)) end)
+	pcall(function() assignments:RemoveAsync(playerKey(player.UserId)) end)
+	Telemetry.event(player, "queue_cancelled")
+	Remotes.MatchEvent:FireClient(player, "QueueCancelled", {})
+	return true
+end
+
 function MatchmakingService.start()
 	if started then return end
 	if not ensureStores() then return end

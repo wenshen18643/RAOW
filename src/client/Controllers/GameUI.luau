@@ -526,6 +526,27 @@ local msgLabel = label(gui, {
 	TextStrokeTransparency = 0.5,
 })
 
+local cancelQueueButton = Instance.new("TextButton")
+cancelQueueButton.AnchorPoint = Vector2.new(0.5, 0.5)
+cancelQueueButton.Position = UDim2.fromScale(0.5, 0.44)
+cancelQueueButton.Size = UDim2.new(0.22, 0, 0, 48)
+cancelQueueButton.BackgroundColor3 = Color3.fromRGB(125, 55, 55)
+cancelQueueButton.TextColor3 = Color3.new(1, 1, 1)
+cancelQueueButton.Font = FONT
+cancelQueueButton.TextScaled = true
+cancelQueueButton.Text = "CANCEL MATCHMAKING"
+cancelQueueButton.Visible = false
+cancelQueueButton.Parent = gui
+local cancelQueueCorner = Instance.new("UICorner")
+cancelQueueCorner.CornerRadius = UDim.new(0, 8)
+cancelQueueCorner.Parent = cancelQueueButton
+cancelQueueButton.Activated:Connect(function()
+	if not cancelQueueButton.Active then return end
+	cancelQueueButton.Active = false
+	cancelQueueButton.Text = "CANCELLING..."
+	Remotes.CancelQueue:FireServer()
+end)
+
 -- Hotbar
 local hotbar = Instance.new("Frame")
 hotbar.AnchorPoint = Vector2.new(0.5, 1)
@@ -978,11 +999,19 @@ function GameUI.start()
 			showMessage("WAITING FOR AN OPPONENT TO JOIN...", Color3.fromRGB(245, 210, 110))
 		elseif event == "QueueStatus" and data then
 			setQueueMode(true)
+			cancelQueueButton.Active = true
+			cancelQueueButton.Text = "CANCEL MATCHMAKING"
+			cancelQueueButton.Visible = true
 			showMessage(`MATCHMAKING • QUEUE POSITION {data.position}`, Color3.fromRGB(130, 205, 255))
 		elseif event == "MatchFound" then
 			setQueueMode(true)
+			cancelQueueButton.Visible = false
 			showMessage("OPPONENT FOUND • CREATING MATCH SERVER...", Color3.fromRGB(120, 235, 150))
+		elseif event == "QueueCancelled" then
+			cancelQueueButton.Visible = false
+			showMessage("MATCHMAKING CANCELLED", Color3.fromRGB(210, 210, 220), 3)
 		elseif event == "QueueError" and data then
+			cancelQueueButton.Visible = false
 			showMessage(data.message or "MATCHMAKING RETRYING...", Color3.fromRGB(255, 150, 120), 5)
 		elseif event == "OpponentJoinFailed" then
 			showMessage("OPPONENT FAILED TO JOIN • RETURNING TO LOBBY", Color3.fromRGB(255, 150, 120))

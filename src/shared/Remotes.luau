@@ -15,6 +15,7 @@ local NAMES = {
 	"FireWeaponSecondary", -- (origin: Vector3, direction: Vector3)
 	"BuyUpgrade", -- (stat: string)
 	"SelectMode", -- (mode: "pve" | "pvp", difficultyName: string?)
+	"CancelQueue", -- () leave PvP matchmaking before an opponent is assigned
 	"ResultAction", -- ("replay" | "next" | "menu") explicit post-match choice
 	"RequestProfile", -- () client asks for a ProfileSync once its listener is ready
 	"RequestLeaderboard", -- (boardType: string?) client asks for the current top-rating board

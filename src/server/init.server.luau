@@ -816,6 +816,25 @@ if isLobby or isStudio then
 		end
 	end)
 
+	Remotes.CancelQueue.OnServerEvent:Connect(function(player)
+		if not allowRate(player, "cancel_queue", 0.5) then return end
+		if isStudio then
+			local side = sideFor(player)
+			if side and currentMatch and currentMatch.status == "Waiting" then
+				playerSides[player] = nil
+				sidePlayers[side] = nil
+				playerReady[player] = nil
+				player:SetAttribute("Side", nil)
+				if not sidePlayers.A and not sidePlayers.B then
+					clearMatchState()
+				end
+				Remotes.MatchEvent:FireClient(player, "QueueCancelled", {})
+			end
+		else
+			MatchmakingService.cancel(player)
+		end
+	end)
+
 	local lobbyPlayersSetUp: { [Player]: boolean } = {}
 	local lobbyRespawnPending: { [Player]: boolean } = {}
 	local function requestLobbyRespawn(player: Player)
