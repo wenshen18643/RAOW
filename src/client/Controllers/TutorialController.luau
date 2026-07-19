@@ -19,8 +19,8 @@ local PANEL = Color3.fromRGB(18, 18, 24)
 
 local tutorialDone = true
 local currentStep = 1
-local stepTimerStart = 0
 local isActive = false
+local stepTwoStartXp = 0
 
 local gui: ScreenGui? = nil
 local hintFrame: Frame? = nil
@@ -32,6 +32,7 @@ local dismissed = false -- player closed the tutorial for this session
 local arrow: TextLabel? = nil
 local highlightStroke: UIStroke? = nil
 local pointTarget: GuiObject? = nil
+local skipStepButton: TextButton? = nil
 
 local function pointAt(target: GuiObject?)
 	if pointTarget == target then return end
@@ -72,6 +73,7 @@ local function label(parent: Instance, props: { [string]: any }): TextLabel
 end
 
 local hideTutorialRef: () -> () = function() end
+local setStepRef: (number) -> () = function() end
 
 local function createUI()
 	if gui then return end
@@ -120,7 +122,7 @@ local function createUI()
 	pad.Parent = frame
 
 	local l = label(frame, {
-		Size = UDim2.fromScale(1, 1),
+		Size = UDim2.new(1, -94, 1, 0),
 		Text = "",
 		TextSize = 15,
 		TextScaled = false,
@@ -129,6 +131,19 @@ local function createUI()
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Center,
 	})
+
+	local skipStep = Instance.new("TextButton")
+	skipStep.AnchorPoint = Vector2.new(1, 0.5)
+	skipStep.Position = UDim2.fromScale(1, 0.5)
+	skipStep.Size = UDim2.fromOffset(86, 34)
+	skipStep.BackgroundColor3 = Color3.fromRGB(55, 55, 68)
+	skipStep.Text = "SKIP STEP"
+	skipStep.Font = FONT
+	skipStep.TextSize = 12
+	skipStep.TextColor3 = Color3.fromRGB(220, 220, 230)
+	skipStep.Parent = frame
+	corner(skipStep, 8)
+	skipStepButton = skipStep
 
 	-- dismiss button (tutorials must always be skippable)
 	local close = Instance.new("TextButton")
@@ -146,6 +161,16 @@ local function createUI()
 		dismissed = true
 		pointAt(nil)
 		hideTutorialRef()
+	end)
+	skipStep.Activated:Connect(function()
+		if not isActive then return end
+		if currentStep < 5 then
+			setStepRef(currentStep + 1)
+		else
+			dismissed = true
+			pointAt(nil)
+			hideTutorialRef()
+		end
 	end)
 
 	-- arrow that bounces above whichever button the current step points at
@@ -168,7 +193,6 @@ end
 
 local function setStep(step: number)
 	currentStep = step
-	stepTimerStart = os.clock()
 
 	if not hintLabel then return end
 	if step == 1 then
@@ -177,7 +201,7 @@ local function setStep(step: number)
 			else "Press 1 to recruit a Club Man"
 		pointAt(GameUI.getSlotButton(1))
 	elseif step == 2 then
-		hintLabel.Text = "Kills earn Gold and XP"
+		hintLabel.Text = "Damage the enemy base or defeat an enemy to earn XP"
 		pointAt(nil)
 	elseif step == 3 then
 		hintLabel.Text = "Build a turret with your hotbar"
@@ -189,7 +213,11 @@ local function setStep(step: number)
 		hintLabel.Text = "Destroy the enemy base to win! First win grants bonus XP -> Level 2"
 		pointAt(nil)
 	end
+	if skipStepButton then
+		skipStepButton.Text = if step == 5 then "FINISH" else "SKIP STEP"
+	end
 end
+setStepRef = setStep
 
 local function showTutorial()
 	if not tutorialDone and not isActive and not dismissed then
@@ -281,7 +309,12 @@ function TutorialController.start()
 				end
 
 				if currentStep == 1 and typeof(state.unitCount) == "number" and state.unitCount > 0 then
+					stepTwoStartXp = typeof(state.xp) == "number" and state.xp or 0
 					setStep(2)
+				end
+
+				if currentStep == 2 and typeof(state.xp) == "number" and state.xp > stepTwoStartXp then
+					setStep(3)
 				end
 
 				if currentStep == 3 and state.turrets then
@@ -322,11 +355,10 @@ function TutorialController.start()
 		end
 	end)
 
-	RunService.Heartbeat:Connect(function(dt)
+	RunService.Heartbeat:Connect(function()
 		if not isActive or tutorialDone then return end
 
 		local now = os.clock()
-		local elapsed = now - stepTimerStart
 
 		-- keep the arrow bouncing above its target button
 		if arrow and arrow.Visible and pointTarget then
@@ -334,20 +366,6 @@ function TutorialController.start()
 			local size = pointTarget.AbsoluteSize
 			local bounce = math.sin(now * 4) * 6
 			arrow.Position = UDim2.fromOffset(pos.X + size.X / 2, pos.Y - 6 + bounce)
-		end
-
-		if currentStep == 2 then
-			if elapsed >= 6 then
-				setStep(3)
-			end
-		elseif currentStep == 3 then
-			if elapsed >= 15 then
-				setStep(4)
-			end
-		elseif currentStep == 4 then
-			if elapsed >= 30 then
-				setStep(5)
-			end
 		end
 	end)
 end
