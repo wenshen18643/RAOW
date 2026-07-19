@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
 local UISelection = require(script.Parent.UISelection)
+local PveStartFlow = require(script.Parent.PveStartFlow)
 
 local LobbyPortals = {}
 
@@ -295,9 +296,16 @@ local function openConfirmPanel(pad: BasePart)
 		
 		-- Buttons
 		goBtn = button(panelFrame, `GO — LEVEL {selectedLevel}`, UDim2.fromScale(0.28, 0.82), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(50, 150, 80), function()
-			Remotes.StartPveLevel:FireServer(pveMode, selectedLevel)
-			cancelledPad = pad
-			closeConfirmPanel()
+			PveStartFlow.request(pveMode, selectedLevel, {
+				onCommitted = function()
+					cancelledPad = pad
+					closeConfirmPanel()
+				end,
+				onRestore = function()
+					cancelledPad = nil
+					if pad.Parent then openConfirmPanel(pad) end
+				end,
+			})
 		end)
 		
 		button(panelFrame, "CANCEL", UDim2.fromScale(0.72, 0.82), UDim2.fromScale(0.36, 0.075), Color3.fromRGB(120, 60, 60), function()

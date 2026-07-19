@@ -63,6 +63,13 @@ local simAccum = 0
 local rematchVotes: { [Player]: boolean } = {}
 local RECONNECT_GRACE = 15
 local disconnectedPlayers: { [number]: { player: Player, side: string, match: Match.Match } } = {}
+type PveStartRequest = {
+	id: string,
+	mode: string,
+	level: number,
+	stage: "reserving" | "teleporting",
+}
+local pveStartRequests: { [Player]: PveStartRequest } = {}
 
 local function sideFor(player: Player): string?
 	return playerSides[player]
@@ -633,23 +640,67 @@ Remotes.BuyUpgrade.OnServerEvent:Connect(function(player, stat)
 	HeroSystem.buyUpgrade(match, player, stat)
 end)
 
-Remotes.StartPveLevel.OnServerEvent:Connect(function(player, mode, level)
-	if typeof(level) ~= "number" or typeof(mode) ~= "string" then return end
-	if not allowRate(player, "start_pve_level", 1) then return end
+local function failPveStart(player: Player, requestId: string, message: string)
+	local request = pveStartRequests[player]
+	if request and request.id == requestId then
+		pveStartRequests[player] = nil
+	end
+	if player.Parent == Players then
+		Remotes.MatchEvent:FireClient(player, "PveStartError", { requestId = requestId, message = message })
+	end
+end
+
+Remotes.StartPveLevel.OnServerEvent:Connect(function(player, mode, level, requestId)
+	if typeof(requestId) ~= "string" or #requestId < 1 or #requestId > 64 then return end
+	if typeof(level) ~= "number" or typeof(mode) ~= "string" then
+		failPveStart(player, requestId, "That stage request was invalid. Please choose the stage again.")
+		return
+	end
+	if level ~= level or level == math.huge or level == -math.huge or #mode > 32 then
+		failPveStart(player, requestId, "That stage request was invalid. Please choose the stage again.")
+		return
+	end
+	if not allowRate(player, "start_pve_level", 1) then
+		failPveStart(player, requestId, "Please wait a moment before trying again.")
+		return
+	end
 	level = math.floor(level)
-	if not table.find(PvELevels.MODES, mode) then return end
+	if not table.find(PvELevels.MODES, mode) then
+		failPveStart(player, requestId, "That difficulty is unavailable. Please choose another.")
+		return
+	end
+	if currentMatch then
+		failPveStart(player, requestId, "A match is already running in this server.")
+		return
+	end
+	if pveStartRequests[player] then
+		failPveStart(player, requestId, "Another battle is already being prepared.")
+		return
+	end
 	local profile = PlayerData.get(player)
 	local prog = profile.pveProgress[mode] or 0
-	if level < 1 or level > prog + 1 then return end
+	if level < 1 or level > prog + 1 then
+		failPveStart(player, requestId, "That stage is locked. Complete the previous stage first.")
+		return
+	end
 	
 	if isStudio then
+		Remotes.MatchEvent:FireClient(player, "PveStartStatus", { requestId = requestId, stage = "starting" })
 		startPvELevel(player, mode, level)
 	elseif isLobby then
+		local request: PveStartRequest = { id = requestId, mode = mode, level = level, stage = "reserving" }
+		pveStartRequests[player] = request
+		Remotes.MatchEvent:FireClient(player, "PveStartStatus", {
+			requestId = requestId,
+			stage = "reserving",
+			message = "Finding an available battle server...",
+		})
 		local reserved, accessCode = pcall(function()
 			return TeleportService:ReserveServerAsync(game.PlaceId)
 		end)
+		if pveStartRequests[player] ~= request then return end
 		if not reserved or typeof(accessCode) ~= "string" then
-			Remotes.MatchEvent:FireClient(player, "QueueError", { message = "Failed to reserve a PvE server." })
+			failPveStart(player, requestId, "No battle server was available. Please retry.")
 			return
 		end
 		
@@ -664,14 +715,59 @@ Remotes.StartPveLevel.OnServerEvent:Connect(function(player, mode, level)
 		local options = Instance.new("TeleportOptions")
 		options.ReservedServerAccessCode = accessCode
 		options:SetTeleportData(data)
-		
+
+		request.stage = "teleporting"
+		Remotes.MatchEvent:FireClient(player, "PveStartStatus", { requestId = requestId, stage = "teleporting" })
 		local ok, err = pcall(function()
 			TeleportService:TeleportAsync(game.PlaceId, { player }, options)
 		end)
 		if not ok then
-			Remotes.MatchEvent:FireClient(player, "QueueError", { message = "Failed to teleport to PvE server." })
+			warn("[PvE] TeleportAsync failed:", err)
+			failPveStart(player, requestId, "The transfer failed. Retry to join a new battle server.")
+			return
 		end
+		task.delay(20, function()
+			if player.Parent == Players and pveStartRequests[player] == request then
+				failPveStart(player, requestId, "The transfer timed out. Please retry.")
+			end
+		end)
+	else
+		failPveStart(player, requestId, "A new battle cannot be started from an active match server.")
 	end
+end)
+
+Remotes.CancelPveStart.OnServerEvent:Connect(function(player, requestId)
+	if typeof(requestId) ~= "string" or #requestId < 1 or #requestId > 64 then return end
+	if not allowRate(player, "cancel_pve_start", 0.25) then
+		Remotes.MatchEvent:FireClient(player, "PveStartStatus", {
+			requestId = requestId,
+			stage = "reserving",
+			message = "Finishing your cancellation request...",
+		})
+		return
+	end
+	local request = pveStartRequests[player]
+	if not request or request.id ~= requestId then
+		Remotes.MatchEvent:FireClient(player, "PveStartCancelled", { requestId = requestId })
+		return
+	end
+	if request.stage ~= "reserving" then
+		Remotes.MatchEvent:FireClient(player, "PveStartStatus", { requestId = requestId, stage = "teleporting" })
+		return
+	end
+	pveStartRequests[player] = nil
+	Remotes.MatchEvent:FireClient(player, "PveStartCancelled", { requestId = requestId })
+end)
+
+TeleportService.TeleportInitFailed:Connect(function(player, _result, _message, _placeId, _options)
+	local request = pveStartRequests[player]
+	if request and request.stage == "teleporting" then
+		failPveStart(player, request.id, "Roblox could not join the battle server. Please retry.")
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	pveStartRequests[player] = nil
 end)
 
 Remotes.BuyPveUpgrade.OnServerEvent:Connect(function(player, trackOrPerkId)

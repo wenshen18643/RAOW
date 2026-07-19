@@ -24,6 +24,7 @@ local Settings = require(script.Parent.Settings)
 local UISelection = require(script.Parent.UISelection)
 local TutorialController = require(script.Parent.TutorialController)
 local InputPrompts = require(script.Parent.InputPrompts)
+local PveStartFlow = require(script.Parent.PveStartFlow)
 
 local MainMenu = {}
 
@@ -567,13 +568,29 @@ function MainMenu.start()
 
 	local LEVELS_PER_PAGE = 20
 
-	local function startLevel(lvl: number)
-		Remotes.StartPveLevel:FireServer(selectedPveMode, lvl)
-		closePanels()
-		menuRoot.Visible = false
-		menuOpen = false
-		stopOrbit()
-		GameUI.setHudVisible(true)
+	local function startLevel(lvl: number, restoreLevels: boolean?)
+		local requestedMode = selectedPveMode
+		PveStartFlow.request(requestedMode, lvl, {
+			onCommitted = function()
+				closePanels()
+				menuRoot.Visible = false
+				menuOpen = false
+				stopOrbit()
+				GameUI.setHudVisible(true)
+			end,
+			onRestore = function()
+				menuRoot.Visible = true
+				menuOpen = true
+				GameUI.setHudVisible(false)
+				startOrbit()
+				closePanels()
+				if restoreLevels ~= false then
+					selectedPveMode = requestedMode
+					refreshLevelsUI()
+					levelsPanel.Visible = true
+				end
+			end,
+		})
 	end
 
 	-- pagination row: < [Levels X - Y] >
@@ -801,7 +818,7 @@ function MainMenu.start()
 	--------------------------------------------------------------------------------
 	local firstBattleBtn = button(menuRoot, "FIRST BATTLE  —  WIN FOR 300 XP", UDim2.fromScale(0.5, 0.325), UDim2.new(0.28, 0, 0.06, 0), Color3.fromRGB(170, 130, 30), function()
 		selectedPveMode = "Normal"
-		startLevel((currentPveProgress.Normal or 0) + 1)
+		startLevel((currentPveProgress.Normal or 0) + 1, false)
 	end)
 	firstBattleBtn.Visible = false
 	local fbStroke = Instance.new("UIStroke")
