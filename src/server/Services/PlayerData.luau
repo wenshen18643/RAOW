@@ -47,13 +47,20 @@ export type PlayerProfile = {
 		musicVolume: number,
 		reducedEffects: boolean,
 		showDamageNumbers: boolean,
+		colorblindTeams: boolean,
+		uiScale: number,
+		crosshairSize: number,
+		crosshairVisible: boolean,
+		crosshairHighContrast: boolean,
+		criticalCaptions: boolean,
+		fieldOfView: number,
 	},
 }
 
 -- Returns a fresh default profile.
 local function defaultProfile(): PlayerProfile
 	return {
-		schemaVersion = 9,
+		schemaVersion = 10,
 		wins = 0,
 		losses = 0,
 		totalKills = 0,
@@ -80,6 +87,13 @@ local function defaultProfile(): PlayerProfile
 			musicVolume = 0.75,
 			reducedEffects = false,
 			showDamageNumbers = true,
+			colorblindTeams = false,
+			uiScale = 0.5,
+			crosshairSize = 0.25,
+			crosshairVisible = true,
+			crosshairHighContrast = false,
+			criticalCaptions = true,
+			fieldOfView = 70,
 		},
 	}
 end
@@ -200,6 +214,13 @@ function PlayerData.load(player: Player): boolean
 			profile.settings.musicVolume = math.clamp(tonumber(result.settings.musicVolume) or 0.75, 0, 1)
 			profile.settings.reducedEffects = result.settings.reducedEffects == true
 			profile.settings.showDamageNumbers = result.settings.showDamageNumbers ~= false
+			profile.settings.colorblindTeams = result.settings.colorblindTeams == true
+			profile.settings.uiScale = math.clamp(tonumber(result.settings.uiScale) or 0.5, 0, 1)
+			profile.settings.crosshairSize = math.clamp(tonumber(result.settings.crosshairSize) or 0.25, 0, 1)
+			profile.settings.crosshairVisible = result.settings.crosshairVisible ~= false
+			profile.settings.crosshairHighContrast = result.settings.crosshairHighContrast == true
+			profile.settings.criticalCaptions = result.settings.criticalCaptions ~= false
+			profile.settings.fieldOfView = math.clamp(tonumber(result.settings.fieldOfView) or 70, 60, 100)
 		end
 		-- Reconcile deterministic level rewards for old and new profiles.
 		for level, reward in ProgressionConfig.Ladder do
@@ -426,11 +447,17 @@ end
 function PlayerData.updateSetting(player: Player, key: string, value: any): boolean
 	local profile = cache[player]
 	if not profile then return false end
-	if key == "mouseSensitivity" or key == "sfxVolume" or key == "uiVolume" or key == "musicVolume" then
+	if key == "mouseSensitivity" or key == "sfxVolume" or key == "uiVolume"
+		or key == "musicVolume" or key == "uiScale" or key == "crosshairSize" then
 		if typeof(value) ~= "number" or value ~= value then return false end
 		(profile.settings :: any)[key] = math.clamp(value, 0, 1)
 		return true
-	elseif key == "reducedEffects" or key == "showDamageNumbers" then
+	elseif key == "fieldOfView" then
+		if typeof(value) ~= "number" or value ~= value then return false end
+		profile.settings.fieldOfView = math.clamp(value, 60, 100)
+		return true
+	elseif key == "reducedEffects" or key == "showDamageNumbers" or key == "colorblindTeams"
+		or key == "crosshairVisible" or key == "crosshairHighContrast" or key == "criticalCaptions" then
 		if typeof(value) ~= "boolean" then return false end
 		(profile.settings :: any)[key] = value
 		return true

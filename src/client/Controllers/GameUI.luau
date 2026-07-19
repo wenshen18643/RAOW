@@ -16,6 +16,8 @@ local Synergies = require(ReplicatedStorage.Shared.Config.Synergies)
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Audio = require(script.Parent.Audio)
+local Accessibility = require(script.Parent.Accessibility)
+local Settings = require(script.Parent.Settings)
 local UISelection = require(script.Parent.UISelection)
 
 local GameUI = {}
@@ -83,6 +85,25 @@ cross.Parent = gui
 local crossCorner = Instance.new("UICorner")
 crossCorner.CornerRadius = UDim.new(1, 0)
 crossCorner.Parent = cross
+local crossStroke = Instance.new("UIStroke")
+crossStroke.Color = Color3.new(0, 0, 0)
+crossStroke.Thickness = 2
+crossStroke.Enabled = false
+crossStroke.Parent = cross
+
+local function refreshCrosshair()
+	local normalized = math.clamp(Settings.get("crosshairSize") or 0.25, 0, 1)
+	local pixels = math.floor(4 + normalized * 14 + 0.5)
+	cross.Size = UDim2.fromOffset(pixels, pixels)
+	cross.Visible = Settings.get("crosshairVisible") ~= false
+	crossStroke.Enabled = Settings.get("crosshairHighContrast") == true
+end
+refreshCrosshair()
+Settings.onChanged(function(key)
+	if key == "crosshairSize" or key == "crosshairVisible" or key == "crosshairHighContrast" then
+		refreshCrosshair()
+	end
+end)
 
 -- Hitmarker: brief X that flashes on hero hit
 local hitmarker = Instance.new("Frame")
@@ -983,6 +1004,7 @@ local function baseAlarm()
 	end
 	lastBaseAlarm = now
 	Audio.play("baseAlarm")
+	Accessibility.caption("YOUR BASE IS UNDER ATTACK", 2.2)
 	local orig = myBaseFill.BackgroundColor3
 	myBaseFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
 	TweenService:Create(myBaseFill, TweenInfo.new(0.35), { BackgroundColor3 = orig }):Play()
@@ -1046,6 +1068,7 @@ function GameUI.start()
 		elseif event == "SpecialFired" and data then
 			if data.side ~= lastState.playerSide then
 				showMessage(`Enemy {data.name}! Take cover!`, Color3.fromRGB(255, 140, 120), 2.5)
+				Accessibility.caption(`ENEMY {string.upper(data.name)} — TAKE COVER`, 2.5)
 			end
 		elseif event == "BaseUnderAttack" then
 			baseAlarm()

@@ -310,6 +310,7 @@ function MainMenu.start()
 	menuRoot.BorderSizePixel = 0
 	menuRoot.Active = true
 	menuRoot.ZIndex = 1
+	menuRoot:SetAttribute("AccessibilityScaleChildren", true)
 	menuRoot.Parent = gui
 	local closePanels: () -> ()
 	local openStorefront, closeStorefront = Storefront.attach(menuRoot, function()
@@ -398,6 +399,7 @@ function MainMenu.start()
 	local levelsPanel = panel(gui, UDim2.new(0.55, 0, 0.65, 0))
 	local pveUpgradesPanel = panel(gui, UDim2.new(0.5, 0, 0.65, 0))
 	local settingsPanel = panel(gui, UDim2.new(0.5, 0, 0.72, 0))
+	local accessibilityPanel = panel(gui, UDim2.new(0.56, 0, 0.82, 0))
 	local helpPanel = panel(gui, UDim2.new(0.5, 0, 0.66, 0))
 	local boardPanel = panel(gui, UDim2.new(0.38, 0, 0.62, 0))
 
@@ -406,6 +408,7 @@ function MainMenu.start()
 		levelsPanel.Visible = false
 		pveUpgradesPanel.Visible = false
 		settingsPanel.Visible = false
+		accessibilityPanel.Visible = false
 		helpPanel.Visible = false
 		boardPanel.Visible = false
 		if closeStorefront then closeStorefront() end
@@ -859,8 +862,79 @@ function MainMenu.start()
 	end)
 	numbersBtn.ZIndex = 11
 	refreshComfortButtons()
-	button(settingsPanel, isLobbyServer and "CLOSE" or "BACK", UDim2.fromScale(0.5, 0.9), UDim2.new(0.24, 0, 0.075, 0), Color3.fromRGB(60, 60, 70), function()
+	button(settingsPanel, "ACCESSIBILITY", UDim2.fromScale(0.5, 0.875), UDim2.new(0.31, 0, 0.06, 0), Color3.fromRGB(65, 75, 105), function()
+		accessibilityPanel.Visible = true
 		settingsPanel.Visible = false
+		UISelection.focus(accessibilityPanel)
+	end).ZIndex = 11
+	button(settingsPanel, isLobbyServer and "CLOSE" or "BACK", UDim2.fromScale(0.5, 0.96), UDim2.new(0.24, 0, 0.06, 0), Color3.fromRGB(60, 60, 70), function()
+		settingsPanel.Visible = false
+	end).ZIndex = 11
+
+	--------------------------------------------------------------------------------
+	-- accessibility panel
+	--------------------------------------------------------------------------------
+	label(accessibilityPanel, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.025),
+		Size = UDim2.new(0.84, 0, 0.08, 0),
+		Text = "ACCESSIBILITY",
+		ZIndex = 11,
+	})
+	local setAccessibilityScale = slider(accessibilityPanel, "UI / Text Scale", UDim2.fromScale(0.5, 0.11), Settings.get("uiScale"), function(v)
+		if not applyingSettings then Settings.set("uiScale", v) end
+	end)
+	local setCrosshairSize = slider(accessibilityPanel, "Crosshair Size", UDim2.fromScale(0.5, 0.235), Settings.get("crosshairSize"), function(v)
+		if not applyingSettings then Settings.set("crosshairSize", v) end
+	end)
+	local setFov = slider(accessibilityPanel, "Field of View", UDim2.fromScale(0.5, 0.36),
+		(math.clamp(Settings.get("fieldOfView"), 60, 100) - 60) / 40, function(v)
+			if not applyingSettings then Settings.set("fieldOfView", math.floor(60 + v * 40 + 0.5)) end
+		end)
+
+	local colorblindBtn: TextButton
+	local crossVisibleBtn: TextButton
+	local crossContrastBtn: TextButton
+	local captionsBtn: TextButton
+	local function toggleColor(button: TextButton, enabled: boolean)
+		button.BackgroundColor3 = enabled and Color3.fromRGB(55, 120, 75) or Color3.fromRGB(70, 70, 82)
+	end
+	local function refreshAccessibilityButtons()
+		local colorblind = Settings.get("colorblindTeams") == true
+		local visible = Settings.get("crosshairVisible") ~= false
+		local contrast = Settings.get("crosshairHighContrast") == true
+		local captions = Settings.get("criticalCaptions") ~= false
+		colorblindBtn.Text = colorblind and "TEAM COLORS: ACCESSIBLE" or "TEAM COLORS: STANDARD"
+		crossVisibleBtn.Text = visible and "CROSSHAIR: ON" or "CROSSHAIR: OFF"
+		crossContrastBtn.Text = contrast and "HIGH CONTRAST: ON" or "HIGH CONTRAST: OFF"
+		captionsBtn.Text = captions and "CRITICAL CAPTIONS: ON" or "CRITICAL CAPTIONS: OFF"
+		toggleColor(colorblindBtn, colorblind)
+		toggleColor(crossVisibleBtn, visible)
+		toggleColor(crossContrastBtn, contrast)
+		toggleColor(captionsBtn, captions)
+	end
+	colorblindBtn = button(accessibilityPanel, "", UDim2.fromScale(0.29, 0.57), UDim2.new(0.4, 0, 0.08, 0), Color3.fromRGB(70, 70, 82), function()
+		Settings.set("colorblindTeams", not Settings.get("colorblindTeams"))
+		refreshAccessibilityButtons()
+	end)
+	crossVisibleBtn = button(accessibilityPanel, "", UDim2.fromScale(0.71, 0.57), UDim2.new(0.4, 0, 0.08, 0), Color3.fromRGB(70, 70, 82), function()
+		Settings.set("crosshairVisible", not Settings.get("crosshairVisible"))
+		refreshAccessibilityButtons()
+	end)
+	crossContrastBtn = button(accessibilityPanel, "", UDim2.fromScale(0.29, 0.69), UDim2.new(0.4, 0, 0.08, 0), Color3.fromRGB(70, 70, 82), function()
+		Settings.set("crosshairHighContrast", not Settings.get("crosshairHighContrast"))
+		refreshAccessibilityButtons()
+	end)
+	captionsBtn = button(accessibilityPanel, "", UDim2.fromScale(0.71, 0.69), UDim2.new(0.4, 0, 0.08, 0), Color3.fromRGB(70, 70, 82), function()
+		Settings.set("criticalCaptions", not Settings.get("criticalCaptions"))
+		refreshAccessibilityButtons()
+	end)
+	for _, item in { colorblindBtn, crossVisibleBtn, crossContrastBtn, captionsBtn } do item.ZIndex = 11 end
+	refreshAccessibilityButtons()
+	button(accessibilityPanel, "BACK TO SETTINGS", UDim2.fromScale(0.5, 0.88), UDim2.new(0.32, 0, 0.075, 0), Color3.fromRGB(60, 60, 70), function()
+		settingsPanel.Visible = true
+		accessibilityPanel.Visible = false
+		UISelection.focus(settingsPanel)
 	end).ZIndex = 11
 
 	local inMatch = false
@@ -875,7 +949,9 @@ function MainMenu.start()
 	local matchSettingsButton = button(matchControls,
 		UserInputService.TouchEnabled and "SETTINGS" or "SETTINGS [P]",
 		UDim2.fromScale(0.245, 0.5), UDim2.fromScale(0.47, 1), Color3.fromRGB(55, 65, 90), function()
-			settingsPanel.Visible = not settingsPanel.Visible
+			local shouldOpen = not settingsPanel.Visible and not accessibilityPanel.Visible
+			accessibilityPanel.Visible = false
+			settingsPanel.Visible = shouldOpen
 		end)
 	matchSettingsButton.ZIndex = 31
 
@@ -949,22 +1025,26 @@ function MainMenu.start()
 	local reconnectNoticeId = 0
 
 	local settingsCursorBinding = "MatchSettingsCursorUnlock"
-	settingsPanel:GetPropertyChangedSignal("Visible"):Connect(function()
-		local openDuringMatch = inMatch and settingsPanel.Visible
+	local function updateSettingsOpen()
+		local openDuringMatch = inMatch and (settingsPanel.Visible or accessibilityPanel.Visible)
 		player:SetAttribute("SettingsOpen", openDuringMatch)
 		if openDuringMatch then
 			RunService:BindToRenderStep(settingsCursorBinding, Enum.RenderPriority.Camera.Value + 1, function()
 				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 			end)
-			UISelection.focus(settingsPanel)
+			UISelection.focus(if accessibilityPanel.Visible then accessibilityPanel else settingsPanel)
 		else
 			RunService:UnbindFromRenderStep(settingsCursorBinding)
 		end
-	end)
+	end
+	settingsPanel:GetPropertyChangedSignal("Visible"):Connect(updateSettingsOpen)
+	accessibilityPanel:GetPropertyChangedSignal("Visible"):Connect(updateSettingsOpen)
 	ContextActionService:BindActionAtPriority("ToggleMatchSettings", function(_, inputState)
 		if not inMatch then return Enum.ContextActionResult.Pass end
 		if inputState == Enum.UserInputState.Begin then
-			settingsPanel.Visible = not settingsPanel.Visible
+			local shouldOpen = not settingsPanel.Visible and not accessibilityPanel.Visible
+			settingsPanel.Visible = shouldOpen
+			accessibilityPanel.Visible = false
 		end
 		return Enum.ContextActionResult.Sink
 	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.ButtonStart, Enum.KeyCode.P)
@@ -1074,6 +1154,7 @@ function MainMenu.start()
 		inMatch = false
 		matchControls.Visible = false
 		settingsPanel.Visible = false
+		accessibilityPanel.Visible = false
 		if lobbyHud then lobbyHud.Visible = false end
 		local dur = os.clock() - matchStartAt
 		local mins = math.floor(dur / 60)
@@ -1142,8 +1223,12 @@ function MainMenu.start()
 				setSfx(Settings.get("sfxVolume"))
 				setUi(Settings.get("uiVolume"))
 				setMusic(Settings.get("musicVolume"))
+				setAccessibilityScale(Settings.get("uiScale"))
+				setCrosshairSize(Settings.get("crosshairSize"))
+				setFov((math.clamp(Settings.get("fieldOfView"), 60, 100) - 60) / 40)
 				applyingSettings = false
 				refreshComfortButtons()
+				refreshAccessibilityButtons()
 			end
 			currentLevel = profile.level
 			currentCoins = profile.coins or 0
@@ -1286,7 +1371,7 @@ function MainMenu.start()
 		end
 	end)
 
-	for _, modal in { modePanel, levelsPanel, pveUpgradesPanel, settingsPanel, helpPanel, boardPanel } do
+	for _, modal in { modePanel, levelsPanel, pveUpgradesPanel, settingsPanel, accessibilityPanel, helpPanel, boardPanel } do
 		UISelection.bind(modal, nil, function()
 			modal.Visible = false
 		end)
@@ -1324,11 +1409,12 @@ function MainMenu.start()
 
 		local function updateBackdrop()
 			local storefrontVisible = if storefrontPanel then storefrontPanel.Visible else false
-			lobbyBackdrop.Visible = pveUpgradesPanel.Visible or settingsPanel.Visible or storefrontVisible
+			lobbyBackdrop.Visible = pveUpgradesPanel.Visible or settingsPanel.Visible or accessibilityPanel.Visible or storefrontVisible
 		end
 
 		pveUpgradesPanel:GetPropertyChangedSignal("Visible"):Connect(updateBackdrop)
 		settingsPanel:GetPropertyChangedSignal("Visible"):Connect(updateBackdrop)
+		accessibilityPanel:GetPropertyChangedSignal("Visible"):Connect(updateBackdrop)
 		if storefrontPanel then
 			storefrontPanel:GetPropertyChangedSignal("Visible"):Connect(updateBackdrop)
 		end

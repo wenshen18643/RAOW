@@ -14,6 +14,13 @@ local values: { [string]: any } = {
 	musicVolume = 0.75,
 	reducedEffects = false,
 	showDamageNumbers = true,
+	colorblindTeams = false,
+	uiScale = 0.5,
+	crosshairSize = 0.25,
+	crosshairVisible = true,
+	crosshairHighContrast = false,
+	criticalCaptions = true,
+	fieldOfView = 70,
 }
 
 local revision: { [string]: number } = {}

@@ -5,12 +5,16 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MonetizationConfig = require(ReplicatedStorage.Shared.Config.MonetizationConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local Settings = require(script.Parent.Settings)
 local TeamVisuals = {}
 local localSide: string? = nil
 local ALLY = Color3.fromRGB(65, 155, 255)
 local ENEMY = Color3.fromRGB(255, 75, 65)
+local ACCESSIBLE_ALLY = Color3.fromRGB(0, 170, 230)
+local ACCESSIBLE_ENEMY = Color3.fromRGB(255, 145, 0)
 
 local function allyColor(): Color3
+	if Settings.get("colorblindTeams") then return ACCESSIBLE_ALLY end
 	local themeId = Players.LocalPlayer:GetAttribute("ArmyTheme")
 	local theme = typeof(themeId) == "string" and MonetizationConfig.themeById(themeId) or nil
 	return theme and theme.color or ALLY
@@ -20,11 +24,14 @@ local function updateBody(body: BasePart)
 	local side = body:GetAttribute("Side")
 	if not localSide or typeof(side) ~= "string" then return end
 	local allied = side == localSide
-	local color = allied and allyColor() or ENEMY
+	local color = allied and allyColor() or (Settings.get("colorblindTeams") and ACCESSIBLE_ENEMY or ENEMY)
 	local model = body:FindFirstAncestorOfClass("Model")
-	if model and allied then
+	if model then
 		local stripe = model:FindFirstChild("Stripe", true)
-		if stripe and stripe:IsA("BasePart") then stripe.Color = color end
+		if stripe and stripe:IsA("BasePart") then
+			stripe.Color = color
+			stripe.Material = if allied then Enum.Material.SmoothPlastic else Enum.Material.Neon
+		end
 	end
 	local highlight = model and model:FindFirstChild("TeamOutline") :: Highlight?
 	if highlight then
@@ -37,7 +44,7 @@ local function updateBody(body: BasePart)
 		local role = string.upper((body:GetAttribute("Role") :: string?) or "UNIT")
 		local commanderTitle = body:GetAttribute("CommanderTitle")
 		local titleText = typeof(commanderTitle) == "string" and commanderTitle ~= "" and `  [{string.upper(commanderTitle)}]` or ""
-		teamLabel.Text = (allied and `ALLY{titleText}  {role}` or `ENEMY{titleText}  {role}`)
+		teamLabel.Text = (allied and `[A] ALLY{titleText}  {role}` or `[E] ENEMY{titleText}  {role}`)
 		teamLabel.TextColor3 = color
 	end
 	local fill = hpBar and hpBar:FindFirstChild("Fill", true) :: Frame?
@@ -60,7 +67,8 @@ local function updateBase(core: BasePart)
 			highlight.DepthMode = Enum.HighlightDepthMode.Occluded
 			highlight.Parent = model
 		end
-		highlight.OutlineColor = allied and ALLY or ENEMY
+		highlight.OutlineColor = allied and allyColor()
+			or (Settings.get("colorblindTeams") and ACCESSIBLE_ENEMY or ENEMY)
 	end
 	local marker = core:FindFirstChild("LocalBaseMarker") :: BillboardGui?
 	if not marker then
@@ -82,8 +90,9 @@ local function updateBase(core: BasePart)
 		text.Parent = marker
 	end
 	local text = marker:FindFirstChild("Text") :: TextLabel
-	text.Text = allied and "YOUR BASE" or "ENEMY BASE"
-	text.TextColor3 = allied and ALLY or ENEMY
+	text.Text = allied and "[A] YOUR BASE" or "[E] ENEMY BASE"
+	text.TextColor3 = allied and allyColor()
+		or (Settings.get("colorblindTeams") and ACCESSIBLE_ENEMY or ENEMY)
 end
 
 local function refreshAll()
@@ -103,6 +112,9 @@ end
 
 function TeamVisuals.start()
 	Players.LocalPlayer:GetAttributeChangedSignal("ArmyTheme"):Connect(refreshAll)
+	Settings.onChanged(function(key)
+		if key == "colorblindTeams" then refreshAll() end
+	end)
 	Remotes.StateUpdate.OnClientEvent:Connect(function(state)
 		if typeof(state) == "table" and state.playerSide ~= localSide then
 			localSide = state.playerSide
