@@ -1,5 +1,5 @@
 --!strict
--- Ambient fake players for the lobby: fill to a population floor, wander
+-- Ambient lobby NPCs: fill to a population floor, wander
 -- between waypoints, occasionally "leave" through a portal. Despawn 1-for-1
 -- as real players join. Lobby servers only.
 
@@ -65,16 +65,14 @@ local function animateBot(humanoid: Humanoid)
 	end)
 end
 
-local function syntheticFlex(rating: number): (string, Color3)
-	if rating >= 1900 then
-		return `IMPOSSIBLE {math.random(1, 8)}`, Color3.fromRGB(220, 90, 220)
-	elseif rating >= 1400 then
-		return `HARD {math.random(5, 25)}`, Color3.fromRGB(255, 140, 40)
-	elseif math.random() < 0.15 then
-		return "ROOKIE", Color3.fromRGB(150, 155, 165)
-	end
-	return `NORMAL {math.random(3, 40)}`, Color3.fromRGB(60, 200, 180)
-end
+local NPC_LABEL_COLOR = Color3.fromRGB(135, 205, 255)
+local NPC_ROLES = {
+	"OFF-DUTY RECRUIT",
+	"DRILL ASSISTANT",
+	"QUARTERMASTER AIDE",
+	"PORTAL ATTENDANT",
+	"LOBBY PATROL",
+}
 
 local function randomWanderTarget(): Vector3
 	local angle = math.random() * math.pi * 2
@@ -163,8 +161,10 @@ local function spawnBot()
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
 			local name = BotIdentity.pickName()
 			model.Name = name
+			model:SetAttribute("IsLobbyNPC", true)
+			CollectionService:AddTag(model, "LobbyNPC")
 			if humanoid then
-				humanoid.DisplayName = name
+				humanoid.DisplayName = `[NPC] {name}`
 			end
 
 			local bot: Bot = { model = model, leaving = false }
@@ -186,9 +186,8 @@ local function spawnBot()
 			spawnedBot = bot
 			if humanoid then animateBot(humanoid) end
 
-			local rating = BotIdentity.ambientRating()
-			local flexText, flexColor = syntheticFlex(rating)
-			LobbyFlex.attachBillboard(model, `ELO {rating}`, flexText, flexColor)
+			local role = NPC_ROLES[math.random(1, #NPC_ROLES)]
+			LobbyFlex.attachBillboard(model, "LOBBY NPC", role, NPC_LABEL_COLOR)
 			driveBot(bot)
 		end)
 		pendingSpawns = math.max(0, pendingSpawns - 1)
