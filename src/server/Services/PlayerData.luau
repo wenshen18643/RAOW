@@ -17,6 +17,7 @@ local PlayerData = {}
 
 local DATASTORE_NAME = "PlayerProfiles_v1"
 local AUTO_SAVE_INTERVAL = 60 -- seconds between periodic auto-saves
+local LOAD_ATTEMPTS = 3
 
 export type PlayerProfile = {
 	schemaVersion: number,
@@ -85,6 +86,8 @@ end
 local cache: { [Player]: PlayerProfile } = {}
 local saving: { [Player]: boolean } = {}
 local saveRequested: { [Player]: boolean } = {}
+type LoadState = "loading" | "ready" | "retry"
+local loadState: { [Player]: LoadState } = {}
 
 -- Reference to the DataStore (nil in Studio when DataStores are disabled)
 local store: DataStore? = nil
@@ -110,21 +113,30 @@ local function keyFor(player: Player): string
 	return "player_" .. tostring(player.UserId)
 end
 
--- Loads the player's profile from the DataStore into the cache.
--- On failure (e.g. Studio with DataStores disabled, or network error), a
--- default profile is used and a warning is logged.
-function PlayerData.load(player: Player)
+-- Loads the player's profile from the DataStore into the cache. A successful
+-- nil read confirms a new account. Failed or malformed reads retain a default
+-- session profile, but leave it in a non-saving state so unknown stored data
+-- cannot be overwritten. Calling load again retries the read.
+function PlayerData.load(player: Player): boolean
+	loadState[player] = "loading"
 	local ds = getStore()
 	if not ds then
-		warn("[PlayerData] DataStore unavailable; using default profile for " .. player.Name)
+		warn("[PlayerData] DataStore unavailable; profile will remain unsaved until load is retried for " .. player.Name)
 		cache[player] = defaultProfile()
-		return
+		loadState[player] = "retry"
+		return false
 	end
 
 	local key = keyFor(player)
-	local ok, result = pcall(function()
-		return ds:GetAsync(key)
-	end)
+	local ok = false
+	local result: any = nil
+	for attempt = 1, LOAD_ATTEMPTS do
+		ok, result = pcall(function()
+			return ds:GetAsync(key)
+		end)
+		if ok then break end
+		if attempt < LOAD_ATTEMPTS then task.wait(0.5 * attempt) end
+	end
 
 	if ok and result and typeof(result) == "table" then
 		-- Merge with defaults to fill in any missing fields from older schemas
@@ -202,19 +214,29 @@ function PlayerData.load(player: Player)
 			profile.equippedTheme = ""
 		end
 		cache[player] = profile
+		loadState[player] = "ready"
+		return true
+	elseif ok and result == nil then
+		cache[player] = defaultProfile()
+		loadState[player] = "ready"
+		return true
 	else
 		if not ok then
-			warn("[PlayerData] Failed to load profile for " .. player.Name .. ": " .. tostring(result))
+			warn("[PlayerData] Failed to load profile for " .. player.Name .. " after retries: " .. tostring(result))
+		else
+			warn("[PlayerData] Invalid stored profile for " .. player.Name .. "; saving is disabled until load is retried")
 		end
 		cache[player] = defaultProfile()
+		loadState[player] = "retry"
+		return false
 	end
 end
 
 -- Saves the cached profile for the player to the DataStore.
--- Does nothing if no cached profile exists.
+-- Does nothing unless the profile came from a confirmed load or new account.
 function PlayerData.save(player: Player): boolean
 	local profile = cache[player]
-	if not profile then
+	if not profile or loadState[player] ~= "ready" then
 		return false
 	end
 	if saving[player] then
@@ -481,6 +503,7 @@ function PlayerData.unload(player: Player)
 	cache[player] = nil
 	saving[player] = nil
 	saveRequested[player] = nil
+	loadState[player] = nil
 end
 
 -- Applies one idempotent match result to both loaded profiles. The caller owns
