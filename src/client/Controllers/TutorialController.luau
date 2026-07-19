@@ -27,6 +27,7 @@ local hintFrame: Frame? = nil
 local hintLabel: TextLabel? = nil
 local currentTween: Tween? = nil
 local dismissed = false -- player closed the tutorial for this session
+local forceReplay = false
 
 -- bouncing arrow + gold highlight pointing at the button for the current step
 local arrow: TextLabel? = nil
@@ -149,9 +150,9 @@ local function createUI()
 	local close = Instance.new("TextButton")
 	close.AnchorPoint = Vector2.new(1, 0)
 	close.Position = UDim2.new(1, 6, 0, -14)
-	close.Size = UDim2.new(0, 22, 0, 22)
+	close.Size = UDim2.new(0, 66, 0, 24)
 	close.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-	close.Text = "X"
+	close.Text = "SKIP ALL"
 	close.Font = FONT
 	close.TextSize = 13
 	close.TextColor3 = Color3.fromRGB(220, 220, 230)
@@ -159,6 +160,8 @@ local function createUI()
 	corner(close, 11)
 	close.Activated:Connect(function()
 		dismissed = true
+		forceReplay = false
+		Remotes.TutorialAction:FireServer("skip")
 		pointAt(nil)
 		hideTutorialRef()
 	end)
@@ -167,7 +170,9 @@ local function createUI()
 		if currentStep < 5 then
 			setStepRef(currentStep + 1)
 		else
-			dismissed = true
+			tutorialDone = true
+			forceReplay = false
+			Remotes.TutorialAction:FireServer("complete")
 			pointAt(nil)
 			hideTutorialRef()
 		end
@@ -220,7 +225,7 @@ end
 setStepRef = setStep
 
 local function showTutorial()
-	if not tutorialDone and not isActive and not dismissed then
+	if (forceReplay or not tutorialDone) and not isActive and not dismissed then
 		isActive = true
 		createUI()
 		if hintFrame then
@@ -293,7 +298,7 @@ function TutorialController.start()
 	Remotes.ProfileSync.OnClientEvent:Connect(function(profile)
 		if typeof(profile) == "table" then
 			tutorialDone = profile.tutorialDone == true
-			if tutorialDone then
+			if tutorialDone and not forceReplay then
 				hideTutorial()
 			end
 		end
@@ -303,7 +308,7 @@ function TutorialController.start()
 
 	Remotes.StateUpdate.OnClientEvent:Connect(function(state)
 		if typeof(state) == "table" then
-			if state.status == "Active" and state.mode == "PvE" and not tutorialDone then
+			if state.status == "Active" and state.mode == "PvE" and (forceReplay or not tutorialDone) then
 				if not isActive then
 					showTutorial()
 				end
@@ -351,12 +356,16 @@ function TutorialController.start()
 				setStep(5)
 			end
 		elseif event == "Victory" or event == "Defeat" or event == "ReturnToMenu" then
+			if event == "Victory" and isActive and currentStep == 5 and not forceReplay then
+				tutorialDone = true
+				Remotes.TutorialAction:FireServer("complete")
+			end
 			hideTutorial()
 		end
 	end)
 
 	RunService.Heartbeat:Connect(function()
-		if not isActive or tutorialDone then return end
+		if not isActive or (tutorialDone and not forceReplay) then return end
 
 		local now = os.clock()
 
@@ -368,6 +377,14 @@ function TutorialController.start()
 			arrow.Position = UDim2.fromOffset(pos.X + size.X / 2, pos.Y - 6 + bounce)
 		end
 	end)
+end
+
+function TutorialController.requestReplay()
+	forceReplay = true
+	dismissed = false
+	tutorialDone = false
+	currentStep = 1
+	hideTutorial()
 end
 
 return TutorialController

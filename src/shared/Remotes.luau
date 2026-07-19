@@ -28,6 +28,7 @@ local NAMES = {
 	"PromptProduct", -- (productKey: string) request a Roblox purchase prompt
 	"PromptSupporterPass", -- () request the optional cosmetic supporter pass
 	"UpdateSettings", -- (key: string, value: number | boolean) persist client preferences
+	"TutorialAction", -- ("skip" | "complete") persist tutorial instruction state
 	-- server -> client
 	"StateUpdate", -- (state: table) periodic HUD snapshot
 	"ProfileSync", -- (profile: table) latest PlayerProfile data

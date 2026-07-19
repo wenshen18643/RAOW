@@ -209,14 +209,13 @@ local function wireMatch(match: Match.Match)
 			local player = sidePlayers["A"]
 			if player then
 				local xpResult
-				local tutorialComplete = false
 				if winner == "A" then
 					PlayerData.recordWin(player)
 					xpResult = PlayerData.addXp(player, ProgressionConfig.XP_WIN)
 					Telemetry.event(player, "pve_match_won", os.clock() - match.startedAt)
 
 					local profile = PlayerData.get(player)
-					if not profile.tutorialDone then
+					if not profile.tutorialRewardClaimed then
 						local tutXpResult = PlayerData.addXp(player, ProgressionConfig.XP_TUTORIAL)
 						local combinedUnlocks = {}
 						for _, unlock in ipairs(xpResult.unlocks) do
@@ -232,8 +231,7 @@ local function wireMatch(match: Match.Match)
 							unlocks = combinedUnlocks,
 							warBondsEarned = (xpResult.warBondsEarned or 0) + (tutXpResult.warBondsEarned or 0),
 						}
-						profile.tutorialDone = true
-						tutorialComplete = true
+						profile.tutorialRewardClaimed = true
 					end
 				else
 					PlayerData.recordLoss(player)
@@ -244,14 +242,11 @@ local function wireMatch(match: Match.Match)
 				if dailyWarBonds > 0 then Telemetry.event(player, "daily_battle_bonds_earned", dailyWarBonds) end
 
 				if winner == "A" then
-					local victoryPayload: { decisionIn: number, xpData: any, tutorialComplete: boolean?, coins: number?, firstClear: boolean?, dailyWarBonds: number?, canNextStage: boolean? } = {
+					local victoryPayload: { decisionIn: number, xpData: any, coins: number?, firstClear: boolean?, dailyWarBonds: number?, canNextStage: boolean? } = {
 						decisionIn = RESULT_TIMEOUT,
 						xpData = xpResult,
 						dailyWarBonds = dailyWarBonds,
 					}
-					if tutorialComplete then
-						victoryPayload.tutorialComplete = true
-					end
 					if matchMode == "PvE" and match.pveLevel and match.pveMode then
 						local firstClear = PlayerData.recordPveClear(player, match.pveMode, match.pveLevel)
 						local rewardCoins = PvELevels.coinsForClear(match.pveMode, match.pveLevel, not firstClear)
@@ -697,6 +692,15 @@ end)
 Remotes.UpdateSettings.OnServerEvent:Connect(function(player, key, value)
 	if typeof(key) ~= "string" or #key > 32 or not allowRate(player, "update_settings", 0.15) then return end
 	if PlayerData.updateSetting(player, key, value) then task.spawn(function() PlayerData.save(player) end) end
+end)
+
+Remotes.TutorialAction.OnServerEvent:Connect(function(player, action)
+	if (action ~= "skip" and action ~= "complete") or not allowRate(player, "tutorial_action", 1) then return end
+	if PlayerData.completeTutorial(player) then
+		Telemetry.event(player, action == "skip" and "tutorial_skipped" or "tutorial_completed", 1)
+		PlayerData.sync(player)
+		task.spawn(function() PlayerData.save(player) end)
+	end
 end)
 
 Remotes.ResultAction.OnServerEvent:Connect(function(player, action)

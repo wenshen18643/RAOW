@@ -28,6 +28,7 @@ export type PlayerProfile = {
 	level: number,
 	xp: number,
 	tutorialDone: boolean,
+	tutorialRewardClaimed: boolean,
 	coins: number,
 	pveProgress: { Normal: number, Hard: number, Impossible: number },
 	pveUpgrades: { unitHp: number, unitDamage: number, startingGold: number },
@@ -60,7 +61,7 @@ export type PlayerProfile = {
 -- Returns a fresh default profile.
 local function defaultProfile(): PlayerProfile
 	return {
-		schemaVersion = 10,
+		schemaVersion = 11,
 		wins = 0,
 		losses = 0,
 		totalKills = 0,
@@ -68,6 +69,7 @@ local function defaultProfile(): PlayerProfile
 		level = 1,
 		xp = 0,
 		tutorialDone = false,
+		tutorialRewardClaimed = false,
 		coins = 0,
 		pveProgress = { Normal = 0, Hard = 0, Impossible = 0 },
 		pveUpgrades = { unitHp = 0, unitDamage = 0, startingGold = 0 },
@@ -164,6 +166,11 @@ function PlayerData.load(player: Player): boolean
 		profile.level = math.clamp(math.floor(tonumber(result.level) or 1), 1, ProgressionConfig.MAX_LEVEL)
 		profile.xp = math.max(tonumber(result.xp) or 0, 0)
 		profile.tutorialDone = result.tutorialDone == true
+		-- Profiles from before schema 11 received the tutorial reward in the
+		-- same transaction that set tutorialDone.
+		profile.tutorialRewardClaimed = if result.tutorialRewardClaimed == nil
+			then profile.tutorialDone
+			else result.tutorialRewardClaimed == true
 		profile.coins = math.max(tonumber(result.coins) or 0, 0)
 		if result.pveProgress and typeof(result.pveProgress) == "table" then
 			profile.pveProgress.Normal = math.max(math.floor(tonumber(result.pveProgress.Normal) or 0), 0)
@@ -534,6 +541,13 @@ function PlayerData.unload(player: Player)
 	saving[player] = nil
 	saveRequested[player] = nil
 	loadState[player] = nil
+end
+
+function PlayerData.completeTutorial(player: Player): boolean
+	local profile = cache[player]
+	if not profile or profile.tutorialDone then return false end
+	profile.tutorialDone = true
+	return true
 end
 
 -- Moves a still-loaded profile to a replacement Player object after a brief

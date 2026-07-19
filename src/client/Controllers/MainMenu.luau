@@ -21,6 +21,7 @@ local GameUI = require(script.Parent.GameUI)
 local Storefront = require(script.Parent.Storefront)
 local Settings = require(script.Parent.Settings)
 local UISelection = require(script.Parent.UISelection)
+local TutorialController = require(script.Parent.TutorialController)
 
 local MainMenu = {}
 
@@ -1115,6 +1116,11 @@ function MainMenu.start()
 	})
 	button(helpPanel, "BACK", UDim2.fromScale(0.5, 0.92), UDim2.new(0.24, 0, 0.07, 0), Color3.fromRGB(60, 60, 70), function()
 		helpPanel.Visible = false
+	end).ZIndex = 11
+	button(helpPanel, "REPLAY TUTORIAL", UDim2.fromScale(0.5, 0.83), UDim2.new(0.3, 0, 0.06, 0), Color3.fromRGB(80, 95, 130), function()
+		TutorialController.requestReplay()
+		helpPanel.Visible = false
+		modePanel.Visible = true
 	end).ZIndex = 11
 
 	--------------------------------------------------------------------------------
