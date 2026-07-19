@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
+local UISelection = require(script.Parent.UISelection)
 
 local LobbyPortals = {}
 
@@ -129,6 +130,7 @@ local function openConfirmPanel(pad: BasePart)
 	panelFrame.Parent = gui
 	confirmPanel = panelFrame
 	corner(panelFrame, 14)
+	UISelection.bind(panelFrame, nil, closeConfirmPanel)
 
 	local panelSize = Instance.new("UISizeConstraint")
 	panelSize.MinSize = Vector2.new(260, 220)

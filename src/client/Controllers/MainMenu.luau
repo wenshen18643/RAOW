@@ -19,6 +19,7 @@ local Audio = require(script.Parent.Audio)
 local GameUI = require(script.Parent.GameUI)
 local Storefront = require(script.Parent.Storefront)
 local Settings = require(script.Parent.Settings)
+local UISelection = require(script.Parent.UISelection)
 
 local MainMenu = {}
 
@@ -388,7 +389,7 @@ function MainMenu.start()
 	end
 
 	-- main buttons (direct children of menuRoot so input isn't blocked by an intermediate holder)
-	button(menuRoot, "PLAY", UDim2.fromScale(0.5, 0.42), UDim2.new(0.22, 0, 0.085, 0), Color3.fromRGB(50, 130, 70), function()
+	local playButton = button(menuRoot, "PLAY", UDim2.fromScale(0.5, 0.42), UDim2.new(0.22, 0, 0.085, 0), Color3.fromRGB(50, 130, 70), function()
 		closePanels()
 		modePanel.Visible = true
 	end)
@@ -1123,6 +1124,14 @@ function MainMenu.start()
 		end
 	end)
 
+	for _, modal in { modePanel, levelsPanel, pveUpgradesPanel, settingsPanel, helpPanel, boardPanel } do
+		UISelection.bind(modal, nil, function()
+			modal.Visible = false
+		end)
+	end
+	UISelection.bind(results)
+	UISelection.bind(menuRoot, playButton)
+
 	if isLobbyServer then
 		menuOpen = false
 		menuRoot.Visible = false
@@ -1211,6 +1220,7 @@ function MainMenu.start()
 			closePanels()
 			settingsPanel.Visible = true
 		end)
+		UISelection.bind(lobbyHud)
 
 		local function adjustLobbyHud()
 			local offset = math.max(GuiService.TopbarInset.Height, 0)

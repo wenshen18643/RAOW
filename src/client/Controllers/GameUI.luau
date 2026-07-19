@@ -16,6 +16,7 @@ local Synergies = require(ReplicatedStorage.Shared.Config.Synergies)
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
 local Audio = require(script.Parent.Audio)
+local UISelection = require(script.Parent.UISelection)
 
 local GameUI = {}
 local lastState: { [string]: any } = {}
@@ -461,6 +462,9 @@ local closeTurrets = turretActionButton(turretPanel, "CLOSE", UDim2.fromScale(0.
 	turretPanel.Visible = false
 end)
 closeTurrets.ZIndex = 22
+UISelection.bind(turretPanel, turretRows[1] and turretRows[1].primary or closeTurrets, function()
+	turretPanel.Visible = false
+end)
 
 local function toggleTurrets()
 	Audio.play("click")
@@ -500,6 +504,9 @@ end
 makeUpgBtn("dmg", "[1] DAMAGE +15%")
 makeUpgBtn("health", "[2] HEALTH +15%")
 makeUpgBtn("def", "[3] DEFENSE +10%")
+UISelection.bind(upgradesPanel, upgButtons.dmg.btn, function()
+	upgradesPanel.Visible = false
+end)
 
 upgradesToggle.Activated:Connect(function()
 	Audio.play("click")

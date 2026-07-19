@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MonetizationConfig = require(ReplicatedStorage.Shared.Config.MonetizationConfig)
 local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local UISelection = require(script.Parent.UISelection)
 
 local Storefront = {}
 local FONT = Enum.Font.GothamBold
@@ -213,6 +214,9 @@ function Storefront.attach(menuRoot: Frame, onOpenRequested: (() -> ())?): (() -
 		panel.Visible = true
 		refresh()
 	end
+	UISelection.bind(panel, daily, function()
+		panel.Visible = false
+	end)
 	local function close()
 		panel.Visible = false
 	end
