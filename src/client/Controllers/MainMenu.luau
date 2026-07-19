@@ -24,6 +24,7 @@ local Settings = require(script.Parent.Settings)
 local UISelection = require(script.Parent.UISelection)
 local TutorialController = require(script.Parent.TutorialController)
 local InputPrompts = require(script.Parent.InputPrompts)
+local ResultsLayout = require(script.Parent.ResultsLayout)
 local PveStartFlow = require(script.Parent.PveStartFlow)
 
 local MainMenu = {}
@@ -112,6 +113,7 @@ local function button(parent: Instance, text: string, pos: UDim2, size: UDim2, c
 
 	local baseSize = size
 	btn.MouseEnter:Connect(function()
+		baseSize = btn.Size
 		Audio.play("hover")
 		TweenService:Create(btn, TweenInfo.new(0.12), {
 			Size = UDim2.new(baseSize.X.Scale * 1.05, 0, baseSize.Y.Scale * 1.05, 0),
@@ -1226,9 +1228,19 @@ function MainMenu.start()
 		Remotes.ResultAction:FireServer("menu")
 	end)
 	resultReturn.ZIndex = 9
-	button(results, "ARMORY / REWARDS", UDim2.fromScale(0.5, 0.845), UDim2.new(0.22, 0, 0.055, 0), Color3.fromRGB(105, 75, 145), function()
+	local resultArmory = button(results, "ARMORY / REWARDS", UDim2.fromScale(0.5, 0.845), UDim2.new(0.22, 0, 0.055, 0), Color3.fromRGB(105, 75, 145), function()
 		openStorefront()
-	end).ZIndex = 9
+	end)
+	resultArmory.ZIndex = 9
+	ResultsLayout.bind({
+		root = results,
+		title = resultTitle,
+		stats = resultStats,
+		countdown = resultCountdown,
+		primary = resultPrimary,
+		returnButton = resultReturn,
+		armory = resultArmory,
+	})
 
 	local function showResults(won: boolean, decisionIn: number, ratingDelta: number?, xpData: any, coins: number?, firstClear: boolean?, dailyWarBonds: number?, canNextStage: boolean?)
 		inMatch = false
