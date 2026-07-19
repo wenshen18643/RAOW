@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local Ages = require(ReplicatedStorage.Shared.Config.Ages)
 local PvELevels = require(ReplicatedStorage.Shared.Config.PvELevels)
@@ -46,6 +47,7 @@ local pveUpgradesState = { unitHp = 0, unitDamage = 0, startingGold = 0 }
 local pvePerksState: {string} = {}
 local lastPveLevelPlayed = 0 -- the PvE level of the match in progress (from StateUpdate)
 local selectedPveMode = "Normal"
+local sliderId = 0
 
 -- Shows the guaranteed next-level currency plus the next milestone collectible.
 local function nextUnlockText(level: number): string?
@@ -145,12 +147,14 @@ local function slider(parent: Instance, titleText: string, pos: UDim2, initial: 
 		ZIndex = row.ZIndex,
 	})
 
-	local track = Instance.new("Frame")
+	local track = Instance.new("TextButton")
 	track.AnchorPoint = Vector2.new(0, 0.5)
 	track.Position = UDim2.new(0.4, 0, 0.5, 0)
 	track.Size = UDim2.new(0.55, 0, 0.18, 0)
 	track.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
 	track.BorderSizePixel = 0
+	track.Text = ""
+	track.AutoButtonColor = false
 	track.ZIndex = row.ZIndex
 	track.Parent = row
 	corner(track, 6)
@@ -181,25 +185,43 @@ local function slider(parent: Instance, titleText: string, pos: UDim2, initial: 
 	end
 
 	local dragging = false
+	local touchInput: InputObject? = nil
 	local function updateFromX(x: number)
 		local rel = (x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1)
 		setValue(rel)
 	end
 	track.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
+			if input.UserInputType == Enum.UserInputType.Touch then touchInput = input end
 			updateFromX(input.Position.X)
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input)
-		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input == touchInput) then
 			updateFromX(input.Position.X)
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input == touchInput then
 			dragging = false
+			touchInput = nil
 		end
+	end)
+
+	sliderId += 1
+	local actionName = `AdjustSettingsSlider{sliderId}`
+	track.SelectionGained:Connect(function()
+		ContextActionService:BindActionAtPriority(actionName, function(_, inputState, input)
+			if inputState ~= Enum.UserInputState.Begin then return Enum.ContextActionResult.Sink end
+			local direction = if input.KeyCode == Enum.KeyCode.DPadLeft or input.KeyCode == Enum.KeyCode.ButtonL1 then -1 else 1
+			setValue(knob.Position.X.Scale + direction * 0.05)
+			return Enum.ContextActionResult.Sink
+		end, false, Enum.ContextActionPriority.High.Value + 1,
+			Enum.KeyCode.DPadLeft, Enum.KeyCode.DPadRight, Enum.KeyCode.ButtonL1, Enum.KeyCode.ButtonR1)
+	end)
+	track.SelectionLost:Connect(function()
+		ContextActionService:UnbindAction(actionName)
 	end)
 
 	return setValue
